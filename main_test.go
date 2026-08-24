@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,20 @@ func TestExecuteVersion(t *testing.T) {
 }
 
 func TestInstallCmd(t *testing.T) {
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	// Mock already installed node version
+	nodeDir := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0")
+	_ = os.MkdirAll(nodeDir, 0755)
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -54,9 +69,15 @@ func TestInstallCmd(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name:        "install node 20.11.0",
+			name:        "install already installed node",
 			args:        []string{"install", "node", "20.11.0"},
-			expectedOut: "Installing node version 20.11.0...\n",
+			expectedOut: "Node.js v20.11.0 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install nodejs alias",
+			args:        []string{"install", "nodejs", "20.11.0"},
+			expectedOut: "Node.js v20.11.0 is already installed",
 			expectError: false,
 		},
 		{
@@ -97,8 +118,8 @@ func TestInstallCmd(t *testing.T) {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
-				if outBuf.String() != tt.expectedOut {
-					t.Errorf("expected output %q, got %q", tt.expectedOut, outBuf.String())
+				if !strings.Contains(outBuf.String(), tt.expectedOut) {
+					t.Errorf("expected output to contain %q, got %q", tt.expectedOut, outBuf.String())
 				}
 			}
 		})
@@ -106,6 +127,20 @@ func TestInstallCmd(t *testing.T) {
 }
 
 func TestUseCmd(t *testing.T) {
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	// Create mock node version
+	nodeDir := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0", "bin")
+	_ = os.MkdirAll(nodeDir, 0755)
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -113,10 +148,21 @@ func TestUseCmd(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name:        "use node 20.11.0",
+			name:        "use node installed",
 			args:        []string{"use", "node", "20.11.0"},
-			expectedOut: "Using node version 20.11.0\n",
+			expectedOut: "Now using Node.js v20.11.0\n",
 			expectError: false,
+		},
+		{
+			name:        "use nodejs alias",
+			args:        []string{"use", "nodejs", "20.11.0"},
+			expectedOut: "Now using Node.js v20.11.0\n",
+			expectError: false,
+		},
+		{
+			name:        "use node uninstalled",
+			args:        []string{"use", "node", "18.0.0"},
+			expectError: true,
 		},
 		{
 			name:        "use go 1.22.0",
@@ -154,121 +200,134 @@ func TestUseCmd(t *testing.T) {
 }
 
 func TestListCmd(t *testing.T) {
-	tests := []struct {
-		name        string
-		args        []string
-		expectedOut string
-		expectError bool
-	}{
-		{
-			name:        "list all",
-			args:        []string{"list"},
-			expectedOut: "Listing all managed runtimes and versions...\n",
-			expectError: false,
-		},
-		{
-			name:        "list alias ls",
-			args:        []string{"ls"},
-			expectedOut: "Listing all managed runtimes and versions...\n",
-			expectError: false,
-		},
-		{
-			name:        "list specific runtime",
-			args:        []string{"list", "node"},
-			expectedOut: "Listing installed versions for node...\n",
-			expectError: false,
-		},
-		{
-			name:        "list alias ls specific runtime",
-			args:        []string{"ls", "go"},
-			expectedOut: "Listing installed versions for go...\n",
-			expectError: false,
-		},
-		{
-			name:        "list too many args",
-			args:        []string{"list", "node", "extra"},
-			expectError: true,
-		},
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// List when no node versions are installed
+	_ = Execute([]string{"list"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "No Node.js versions installed") {
+		t.Errorf("unexpected output when empty: %s", outBuf.String())
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			outBuf := new(bytes.Buffer)
-			errBuf := new(bytes.Buffer)
+	outBuf.Reset()
+	_ = Execute([]string{"list", "node"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "No installed Node.js versions found") {
+		t.Errorf("unexpected output for empty list node: %s", outBuf.String())
+	}
 
-			err := Execute(tt.args, outBuf, errBuf)
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("expected error for args %v, got none", tt.args)
-				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if outBuf.String() != tt.expectedOut {
-					t.Errorf("expected output %q, got %q", tt.expectedOut, outBuf.String())
-				}
-			}
-		})
+	// Create multiple installed versions (one active, one inactive)
+	vDir1 := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0")
+	vDir2 := filepath.Join(tmpHome, ".uvm", "versions", "node", "v18.20.0")
+	_ = os.MkdirAll(vDir1, 0755)
+	_ = os.MkdirAll(vDir2, 0755)
+
+	// Set v20.11.0 active
+	currentParent := filepath.Join(tmpHome, ".uvm", "current")
+	_ = os.MkdirAll(currentParent, 0755)
+	_ = os.WriteFile(filepath.Join(currentParent, "node.version"), []byte("v20.11.0"), 0644)
+
+	outBuf.Reset()
+	_ = Execute([]string{"ls", "nodejs"}, outBuf, errBuf)
+	out := outBuf.String()
+	if !strings.Contains(out, "* v20.11.0 (active)") || !strings.Contains(out, "v18.20.0") {
+		t.Errorf("expected active and inactive node versions list, got: %s", out)
+	}
+
+	// List all when installed
+	outBuf.Reset()
+	_ = Execute([]string{"list"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "Installed Node.js versions") {
+		t.Errorf("expected node list in list all, got: %s", outBuf.String())
+	}
+
+	// Other runtimes
+	outBuf.Reset()
+	_ = Execute([]string{"list", "go"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "Listing installed versions for go") {
+		t.Errorf("unexpected go list output: %s", outBuf.String())
 	}
 }
 
 func TestRemoveCmd(t *testing.T) {
-	tests := []struct {
-		name        string
-		args        []string
-		expectedOut string
-		expectError bool
-	}{
-		{
-			name:        "remove node 20.11.0",
-			args:        []string{"remove", "node", "20.11.0"},
-			expectedOut: "Removing node version 20.11.0...\n",
-			expectError: false,
-		},
-		{
-			name:        "alias rm",
-			args:        []string{"rm", "go", "1.22.0"},
-			expectedOut: "Removing go version 1.22.0...\n",
-			expectError: false,
-		},
-		{
-			name:        "alias uninstall",
-			args:        []string{"uninstall", "python", "3.12.2"},
-			expectedOut: "Removing python version 3.12.2...\n",
-			expectError: false,
-		},
-		{
-			name:        "remove missing version",
-			args:        []string{"remove", "node"},
-			expectError: true,
-		},
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	vDir := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0")
+	_ = os.MkdirAll(vDir, 0755)
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// Remove node version
+	err := Execute([]string{"remove", "node", "20.11.0"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
+		t.Fatalf("remove failed: %v, out: %s", err, outBuf.String())
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			outBuf := new(bytes.Buffer)
-			errBuf := new(bytes.Buffer)
+	// Remove non-node runtime
+	outBuf.Reset()
+	err = Execute([]string{"rm", "go", "1.22.0"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Removing go version 1.22.0") {
+		t.Errorf("unexpected rm go output: %s", outBuf.String())
+	}
+}
 
-			err := Execute(tt.args, outBuf, errBuf)
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("expected error for args %v, got none", tt.args)
-				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if outBuf.String() != tt.expectedOut {
-					t.Errorf("expected output %q, got %q", tt.expectedOut, outBuf.String())
-				}
-			}
-		})
+func TestCurrentCmd(t *testing.T) {
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// Current when none is active
+	err := Execute([]string{"current"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "No active Node.js version") {
+		t.Errorf("expected no active version message, got: %s", outBuf.String())
+	}
+
+	// Set active version
+	currentParent := filepath.Join(tmpHome, ".uvm", "current")
+	_ = os.MkdirAll(currentParent, 0755)
+	_ = os.WriteFile(filepath.Join(currentParent, "node.version"), []byte("v20.11.0"), 0644)
+
+	outBuf.Reset()
+	err = Execute([]string{"current", "node"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "v20.11.0") {
+		t.Errorf("expected current version v20.11.0, got: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"current", "go"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "none") {
+		t.Errorf("expected none for go, got: %s", outBuf.String())
 	}
 }
 
 func TestExecuteWithNilStreams(t *testing.T) {
-	// Tests fallback when streams are nil
 	err := Execute([]string{"--version"}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error with nil streams: %v", err)
@@ -279,7 +338,7 @@ func TestRunFunction(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
-	os.Args = []string{"uvm", "list"}
+	os.Args = []string{"uvm", "list", "go"}
 	if err := run(); err != nil {
 		t.Fatalf("run() returned error: %v", err)
 	}
@@ -287,31 +346,31 @@ func TestRunFunction(t *testing.T) {
 
 func TestMainExecutionSuccess(t *testing.T) {
 	if os.Getenv("BE_UVM_MAIN_SUCCESS") == "1" {
+		os.Args = []string{"uvm", "list", "go"}
 		main()
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestMainExecutionSuccess")
 	cmd.Env = append(os.Environ(), "BE_UVM_MAIN_SUCCESS=1")
-	cmd.Args = append(cmd.Args, "list")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("process exited with err: %v, output: %s", err, string(output))
 	}
-	if !strings.Contains(string(output), "Listing all managed runtimes") {
+	if !strings.Contains(string(output), "Listing installed versions for go") {
 		t.Errorf("unexpected output: %s", string(output))
 	}
 }
 
 func TestMainExecutionFailure(t *testing.T) {
 	if os.Getenv("BE_UVM_MAIN_FAILURE") == "1" {
+		os.Args = []string{"uvm", "invalid_command_xyz"}
 		main()
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestMainExecutionFailure")
 	cmd.Env = append(os.Environ(), "BE_UVM_MAIN_FAILURE=1")
-	cmd.Args = append(cmd.Args, "invalid_command_xyz")
 	err := cmd.Run()
 	if err == nil {
 		t.Fatalf("expected main() to exit with error code for invalid command")

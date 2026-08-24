@@ -12,6 +12,14 @@ import (
 	"time"
 )
 
+// helper to create a guaranteed impossible directory across all platforms (Windows, Linux, macOS)
+func getImpossibleDir(t *testing.T) string {
+	tmpDir := t.TempDir()
+	blockingFile := filepath.Join(tmpDir, "blocking_file.txt")
+	_ = os.WriteFile(blockingFile, []byte("block"), 0644)
+	return filepath.Join(blockingFile, "sub_dir", "bin")
+}
+
 func TestBrowserOpener(t *testing.T) {
 	_ = BrowserOpener("http://localhost:8484", "darwin")
 	_ = BrowserOpener("http://localhost:8484", "windows")
@@ -162,8 +170,9 @@ func TestUpdateShellProfile(t *testing.T) {
 		t.Errorf("expected .bashrc to be updated: %s, %v", bashrcFile, err)
 	}
 
-	// 6. Error handling with invalid directory
-	_, err = UpdateShellProfile(targetDir, "/dev/null/impossible", "zsh", "linux")
+	// 6. Error handling with impossible directory
+	impossibleHome := getImpossibleDir(t)
+	_, err = UpdateShellProfile(targetDir, impossibleHome, "zsh", "linux")
 	if err == nil {
 		t.Errorf("expected error for impossible path")
 	}
@@ -249,7 +258,7 @@ func TestInstallAndUninstall(t *testing.T) {
 
 	// 8. Install error with impossible directory
 	optsErr := Options{
-		InstallDir: "/dev/null/impossible/bin",
+		InstallDir: getImpossibleDir(t),
 	}
 	resErr, err := Install(optsErr, tmpHome, "linux")
 	if err == nil || resErr.Success {
@@ -276,7 +285,8 @@ func TestCopyFile(t *testing.T) {
 		t.Errorf("expected error for non-existent source")
 	}
 
-	if err := copyFile(src, "/dev/null/impossible"); err == nil {
+	impossibleDst := getImpossibleDir(t)
+	if err := copyFile(src, impossibleDst); err == nil {
 		t.Errorf("expected error for impossible dest")
 	}
 }
@@ -322,9 +332,9 @@ func TestRunVisualCLI(t *testing.T) {
 		t.Errorf("unexpected uninstall output: %s", outBuf.String())
 	}
 
-	// 4. Error case
+	// 4. Error case with impossible directory
 	optsBad := Options{
-		InstallDir: "/dev/null/impossible/bin",
+		InstallDir: getImpossibleDir(t),
 	}
 	err = RunVisualCLI(optsBad, inBuf, outBuf, tmpHome, "darwin")
 	if err == nil {
@@ -418,7 +428,7 @@ func TestWebServerEndpoints(t *testing.T) {
 	}
 
 	// 10. POST /api/install with error
-	badInstallPayload := Options{InstallDir: "/dev/null/impossible/bin"}
+	badInstallPayload := Options{InstallDir: getImpossibleDir(t)}
 	badBody, _ := json.Marshal(badInstallPayload)
 	reqBadInstall := httptest.NewRequest(http.MethodPost, "/api/install", bytes.NewReader(badBody))
 	wBadInstall := httptest.NewRecorder()

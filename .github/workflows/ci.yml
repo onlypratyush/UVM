@@ -45,8 +45,9 @@ jobs:
       - name: Build CLI and Visual Installer
         shell: bash
         run: |
-          go build -o bin/uvm main.go
-          go build -o bin/uvm-installer cmd/installer/main.go
+          mkdir -p bin
+          go build -o bin/ main.go
+          go build -o bin/ cmd/installer/main.go
 
       - name: Test macOS/Linux Installer Script
         if: matrix.os != 'windows-latest'
@@ -59,7 +60,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $script = Get-Command .\install.ps1
-          if (-not $script) {
+          if (-not (Test-Path .\install.ps1)) {
             throw "install.ps1 not found"
           }
+          # Validate powershell syntax and execution
+          pwsh -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
