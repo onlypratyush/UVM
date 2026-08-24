@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -9,42 +10,55 @@ import (
 
 var version = "0.0.1"
 
-func main() {
-	// Root command
+// NewRootCmd creates and configures the root command and all subcommands.
+func NewRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:     "uvm",
-		Short:   "Universal Version Manager",
+		Use:   "uvm",
+		Short: "Universal Version Manager",
 		Long: `uvm (Universal Version Manager) is a fast, lightweight CLI tool to install, 
 manage, and switch between multiple programming language runtimes and versions seamlessly.`,
-		Version: version,
+		Version:      version,
+		SilenceUsage: true,
 	}
 
-	// 1. uvm install <runtime> <version>
-	installCmd := &cobra.Command{
+	rootCmd.AddCommand(
+		newInstallCmd(),
+		newUseCmd(),
+		newListCmd(),
+		newRemoveCmd(),
+	)
+
+	return rootCmd
+}
+
+func newInstallCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:     "install [runtime] [version]",
 		Short:   "Install a specific runtime version",
 		Args:    cobra.ExactArgs(2),
 		Example: "  uvm install node 20.11.0\n  uvm install go 1.22.0\n  uvm install python 3.12.2",
 		Run: func(cmd *cobra.Command, args []string) {
 			runtime, ver := args[0], args[1]
-			fmt.Printf("Installing %s version %s...\n", runtime, ver)
+			fmt.Fprintf(cmd.OutOrStdout(), "Installing %s version %s...\n", runtime, ver)
 		},
 	}
+}
 
-	// 2. uvm use <runtime> <version>
-	useCmd := &cobra.Command{
+func newUseCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:     "use [runtime] [version]",
 		Short:   "Switch to a specific installed runtime version",
 		Args:    cobra.ExactArgs(2),
 		Example: "  uvm use node 20.11.0\n  uvm use go 1.22.0",
 		Run: func(cmd *cobra.Command, args []string) {
 			runtime, ver := args[0], args[1]
-			fmt.Printf("Using %s version %s\n", runtime, ver)
+			fmt.Fprintf(cmd.OutOrStdout(), "Using %s version %s\n", runtime, ver)
 		},
 	}
+}
 
-	// 3. uvm list [runtime]
-	listCmd := &cobra.Command{
+func newListCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:     "list [runtime]",
 		Aliases: []string{"ls"},
 		Short:   "List installed versions for runtimes",
@@ -52,16 +66,17 @@ manage, and switch between multiple programming language runtimes and versions s
 		Example: "  uvm list\n  uvm list node",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) == 0 {
-				fmt.Println("Listing all managed runtimes and versions...")
+				fmt.Fprintln(cmd.OutOrStdout(), "Listing all managed runtimes and versions...")
 			} else {
 				runtime := args[0]
-				fmt.Printf("Listing installed versions for %s...\n", runtime)
+				fmt.Fprintf(cmd.OutOrStdout(), "Listing installed versions for %s...\n", runtime)
 			}
 		},
 	}
+}
 
-	// 4. uvm remove <runtime> <version>
-	removeCmd := &cobra.Command{
+func newRemoveCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:     "remove [runtime] [version]",
 		Aliases: []string{"rm", "uninstall"},
 		Short:   "Remove a specific runtime version",
@@ -69,15 +84,31 @@ manage, and switch between multiple programming language runtimes and versions s
 		Example: "  uvm remove node 20.11.0\n  uvm rm go 1.22.0",
 		Run: func(cmd *cobra.Command, args []string) {
 			runtime, ver := args[0], args[1]
-			fmt.Printf("Removing %s version %s...\n", runtime, ver)
+			fmt.Fprintf(cmd.OutOrStdout(), "Removing %s version %s...\n", runtime, ver)
 		},
 	}
+}
 
-	rootCmd.AddCommand(installCmd, useCmd, listCmd, removeCmd)
+// Execute runs the CLI application with given arguments and streams output to out/err writers.
+func Execute(args []string, outStream, errStream io.Writer) error {
+	cmd := NewRootCmd()
+	cmd.SetArgs(args)
+	if outStream != nil {
+		cmd.SetOut(outStream)
+	}
+	if errStream != nil {
+		cmd.SetErr(errStream)
+	}
+	return cmd.Execute()
+}
 
-	if err := rootCmd.Execute(); err != nil {
+func run() error {
+	return Execute(os.Args[1:], os.Stdout, os.Stderr)
+}
+
+func main() {
+	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
-

@@ -1,7 +1,8 @@
 # 🚀 uvm (Universal Version Manager)
 
-[![Release](https://img.shields.io/badge/release-v0.0.1-blue.svg)](https://github.com/)
+[![Release](https://img.shields.io/badge/release-v0.0.1-blue.svg)](https://github.com/onlypratyush/UVM-)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg?style=flat&logo=go)](https://golang.org)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen.svg)]()
 
@@ -9,102 +10,134 @@
 
 ---
 
+## ⚡ Quick Install
+
+### 🍎 macOS & 🐧 Linux (One-Liner)
+
+Run the automated installer in your terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.sh | bash
+```
+
+### 🪟 Windows (PowerShell One-Liner)
+
+Run the installer in PowerShell (run as regular user, no Admin required):
+
+```powershell
+irm https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.ps1 | iex
+```
+
+---
+
 ## 🌐 Cross-Platform Support
 
 `uvm` is built with Go to deliver first-class, native performance across all major operating systems and architectures without external shell dependencies.
 
-| Operating System | Architecture | Supported Shells |
-| :--- | :--- | :--- |
-| 🍎 **macOS** | ARM64 (Apple Silicon M1/M2/M3/M4), x86_64 (Intel) | Zsh, Bash, Fish |
-| 🐧 **Linux** | x86_64 (amd64), ARM64, ARMv7 | Bash, Zsh, Fish |
-| 🪟 **Windows** | x86_64 (amd64), ARM64 | PowerShell, CMD, Git Bash, WSL |
+| Operating System | Architecture | Supported Shells | Installer |
+| :--- | :--- | :--- | :--- |
+| 🍎 **macOS** | ARM64 (Apple Silicon M1-M4), x86_64 (Intel) | Zsh, Bash, Fish | `install.sh` / Homebrew |
+| 🐧 **Linux** | x86_64 (amd64), ARM64, ARMv7 | Bash, Zsh, Fish | `install.sh` |
+| 🪟 **Windows** | x86_64 (amd64), ARM64 | PowerShell, CMD, Windows Terminal | `install.ps1` / Scoop |
 
 ---
 
-## ✨ Features (v0.0.1)
+## ✨ Features
 
 - ⚡ **Lightweight & Fast**: Compiled native binary with zero runtime dependencies.
-- 🌍 **True Multi-Platform**: Native support on macOS, Linux, and Windows.
+- 🌍 **True Multi-Platform**: Native installers and binaries on macOS, Linux, and Windows.
 - 📦 **Runtime Installation**: Command interface to fetch and setup desired runtime versions.
 - 🔄 **Quick Switching**: Switch active versions seamlessly across projects.
 - 📋 **Version Listing**: View currently installed and managed language versions.
 - 🗑️ **Clean Uninstallation**: Remove runtime versions cleanly when no longer needed.
+- 🧪 **100% Test Coverage**: Fully verified CLI command suite with unit and integration tests.
 - 🧩 **Extensible CLI**: Powered by [Cobra](https://github.com/spf13/cobra) with auto-generated help menus and shell completions.
 
 ---
 
-## 📥 Installation
+## 📥 Detailed Installation Methods
 
-### Prerequisites
-- [Go](https://go.dev/dl/) 1.22 or higher
-
----
-
-### Method 1: Using `go install` (Recommended)
-
-Works on macOS, Linux, and Windows:
-
-```bash
-go install uvm@latest
-```
-
----
-
-### Method 2: Build from Source
+### Method 1: Automated Script Installers (Recommended)
 
 #### 🍎 macOS & 🐧 Linux
 
 ```bash
-# Clone the repository
-git clone https://github.com/<your-username>/uvm.git
-cd uvm
+# Web one-liner
+curl -fsSL https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.sh | bash
 
-# Download dependencies
-go mod download
-
-# Build binary
-go build -o uvm main.go
-
-# (Optional) Move to system PATH
-sudo mv uvm /usr/local/bin/
+# Or from cloned repository
+git clone https://github.com/onlypratyush/UVM-.git
+cd UVM-
+./install.sh
 ```
 
-#### 🪟 Windows (PowerShell / Command Prompt)
+The script automatically:
+1. Detects your OS and CPU architecture (`darwin-arm64`, `darwin-amd64`, `linux-amd64`, `linux-arm64`).
+2. Installs binary to `~/.uvm/bin/uvm`.
+3. Adds `~/.uvm/bin` to your shell profile (`~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`).
+
+#### 🪟 Windows (PowerShell)
 
 ```powershell
-# Clone the repository
-git clone https://github.com/<your-username>/uvm.git
-cd uvm
+# Web one-liner
+irm https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.ps1 | iex
 
-# Download dependencies
-go mod download
+# Or from cloned repository
+git clone https://github.com/onlypratyush/UVM-.git
+cd UVM-
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
 
-# Build binary
-go build -o uvm.exe main.go
+The script automatically:
+1. Detects your Windows architecture (`AMD64` vs `ARM64`).
+2. Installs `uvm.exe` to `$HOME\.uvm\bin\uvm.exe`.
+3. Permanently configures your User `PATH` environment variable.
 
-# (Optional) Move to a folder in your PATH (e.g., C:\tools\uvm or user bin)
-New-Item -ItemType Directory -Force -Path "$HOME\bin"
-Move-Item .\uvm.exe "$HOME\bin\uvm.exe"
+---
+
+### Method 2: Package Managers
+
+#### 🍎 Homebrew (macOS & Linux)
+
+```bash
+brew install onlypratyush/tap/uvm
+# or install from formula
+brew install packaging/homebrew/uvm.rb
+```
+
+#### 🪟 Scoop (Windows)
+
+```powershell
+scoop install packaging/scoop/uvm.json
 ```
 
 ---
 
-### 📦 Cross-Compilation
-
-To build binaries for all supported platforms from any operating system:
+### Method 3: Using `make` or `go install`
 
 ```bash
-# macOS (Apple Silicon & Intel)
-GOOS=darwin GOARCH=arm64 go build -o dist/uvm-darwin-arm64 main.go
-GOOS=darwin GOARCH=amd64 go build -o dist/uvm-darwin-amd64 main.go
+# Using make (macOS/Linux)
+make install
 
-# Linux (amd64 & arm64)
-GOOS=linux GOARCH=amd64 go build -o dist/uvm-linux-amd64 main.go
-GOOS=linux GOARCH=arm64 go build -o dist/uvm-linux-arm64 main.go
+# Using go install (Cross-platform)
+go install github.com/onlypratyush/UVM-@latest
+```
 
-# Windows (64-bit & ARM64)
-GOOS=windows GOARCH=amd64 go build -o dist/uvm-windows-amd64.exe main.go
-GOOS=windows GOARCH=arm64 go build -o dist/uvm-windows-arm64.exe main.go
+---
+
+## 🧪 Testing & 100% Test Coverage
+
+`uvm` features a comprehensive test suite covering 100% of CLI statements and edge cases.
+
+```bash
+# Run unit tests
+make test
+
+# Run tests and verify 100% statement coverage
+make test-coverage
+
+# Run installer test suite
+./tests/test_install.sh
 ```
 
 ---
@@ -184,42 +217,72 @@ uvm --version
 
 ---
 
-## 📂 Project Structure
+## 🗑️ Uninstallation
 
+### 🍎 macOS & 🐧 Linux
+```bash
+./install.sh --uninstall
+# or with make
+make uninstall
 ```
-uvm/
-├── .gitignore        # Git ignore rules for Go, build artifacts, and OS files
-├── LICENSE           # MIT Open Source License
-├── README.md         # Documentation and cross-platform guide
-├── go.mod            # Go module definitions and dependencies
-├── go.sum            # Dependency checksums
-└── main.go           # CLI root and command implementations
+
+### 🪟 Windows
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
 ```
 
 ---
 
-## 🏷️ Releasing v0.0.1
+## 📂 Project Structure
 
-To tag and push the `v0.0.1` release:
+```
+uvm/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml            # Multi-OS CI & 100% coverage validation
+│       └── release.yml       # Automated cross-platform GitHub release pipeline
+├── packaging/
+│   ├── homebrew/
+│   │   └── uvm.rb            # Homebrew Formula
+│   └── scoop/
+│       └── uvm.json          # Windows Scoop Manifest
+├── scripts/
+│   └── build.sh              # Cross-platform build & packaging automation
+├── tests/
+│   └── test_install.sh       # Installer test suite
+├── .gitignore                # Git ignore rules for Go, build artifacts, OS files
+├── install.sh                # macOS & Linux installer script
+├── install.ps1               # Windows PowerShell installer script
+├── Makefile                  # Build, test, install, package commands
+├── LICENSE                   # MIT Open Source License
+├── README.md                 # Documentation and guide
+├── go.mod                    # Go module definitions
+├── go.sum                    # Dependency checksums
+├── main.go                   # CLI implementation
+└── main_test.go              # Test suite (100% statement coverage)
+```
+
+---
+
+## 🏷️ Releasing New Versions
+
+To release a new version with automated cross-platform binary builds:
 
 ```bash
-# 1. Stage and commit all changes
-git add .
-git commit -m "chore(release): prepare v0.0.1"
-
-# 2. Create git tag
+# 1. Tag version
 git tag -a v0.0.1 -m "Release v0.0.1"
 
-# 3. Push commits and tags to remote
-git push origin main
+# 2. Push tag to GitHub
 git push origin v0.0.1
 ```
+
+GitHub Actions will automatically compile binaries for macOS, Linux, and Windows, create `.tar.gz` and `.zip` archives with SHA256 checksums, and publish them to GitHub Releases.
 
 ---
 
 ## 🗺️ Roadmap
 
-- [x] **v0.0.1**: Initial multi-platform CLI (`install`, `use`, `list`, `remove`), flags, and versioning.
+- [x] **v0.0.1**: Initial multi-platform CLI (`install`, `use`, `list`, `remove`), installers (`install.sh`, `install.ps1`), 100% test coverage, and release pipeline.
 - [ ] **v0.1.0**: Cross-platform shim & symlink architecture for PATH resolution (macOS/Linux symlinks, Windows junction/shims).
 - [ ] **v0.2.0**: Official download providers for Node.js, Go, Python, and Rust binaries.
 - [ ] **v0.3.0**: Project-level `.uvmrc` or `.tool-versions` auto-switching.

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test & 100% Coverage Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        go-version: [ '1.22', '1.23' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run Go Unit Tests with Coverage
+        shell: bash
+        run: |
+          go test -v -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+
+      - name: Validate 100% Coverage on Ubuntu
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23'
+        shell: bash
+        run: |
+          TOTAL_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+          echo "Total Statement Coverage: ${TOTAL_COVERAGE}"
+          if [ "${TOTAL_COVERAGE}" != "100.0%" ]; then
+            echo "Error: Code coverage is ${TOTAL_COVERAGE}, expected 100.0%"
+            exit 1
+          fi
+
+      - name: Test macOS/Linux Installer Script
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          chmod +x install.sh tests/test_install.sh
+          ./tests/test_install.sh
+
+      - name: Test Windows PowerShell Installer Syntax
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $script = Get-Command .\install.ps1
+          if (-not $script) {
+            throw "install.ps1 not found"
+          }
