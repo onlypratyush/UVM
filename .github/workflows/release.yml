@@ -48,7 +48,9 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
+            dist/installer.exe
             dist/uvm-*
+            dist/uvm-installer-*
             dist/uvm_*.tar.gz
             dist/uvm_*.zip
             dist/checksums.txt

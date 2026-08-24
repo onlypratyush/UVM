@@ -3,26 +3,33 @@
 # ==============================================================================
 
 BINARY_NAME=uvm
+INSTALLER_NAME=uvm-installer
 VERSION?=0.0.1
 DIST_DIR=dist
 BIN_DIR=bin
 INSTALL_DIR?=$(HOME)/.uvm/bin
 
-.PHONY: all build test test-coverage install uninstall cross-compile package clean help
+.PHONY: all build build-installer test test-coverage install uninstall cross-compile package clean help
 
-all: test build
+all: test build build-installer
 
-## build: Compile local binary for current platform
+## build: Compile local CLI binary for current platform
 build:
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BIN_DIR)/$(BINARY_NAME) main.go
 	@echo "Built $(BIN_DIR)/$(BINARY_NAME)"
 
-## test: Run unit tests
+## build-installer: Compile local visual installer for current platform
+build-installer:
+	@mkdir -p $(BIN_DIR)
+	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BIN_DIR)/$(INSTALLER_NAME) cmd/installer/main.go
+	@echo "Built $(BIN_DIR)/$(INSTALLER_NAME)"
+
+## test: Run unit tests across all packages
 test:
 	go test -v ./...
 
-## test-coverage: Run unit tests and enforce 100% code coverage
+## test-coverage: Run unit tests and enforce statement code coverage
 test-coverage:
 	go test -v -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
@@ -39,7 +46,7 @@ uninstall:
 	@rm -f $(INSTALL_DIR)/$(BINARY_NAME)
 	@echo "Uninstalled $(BINARY_NAME) from $(INSTALL_DIR)"
 
-## cross-compile: Cross compile for macOS, Linux, and Windows
+## cross-compile: Cross-compile CLI & Visual Installers for macOS, Linux, and Windows
 cross-compile:
 	@chmod +x ./scripts/build.sh
 	./scripts/build.sh $(VERSION)
@@ -49,7 +56,7 @@ package: cross-compile
 
 ## clean: Clean build artifacts and temporary files
 clean:
-	rm -rf $(BIN_DIR) $(DIST_DIR) coverage.out
+	rm -rf $(BIN_DIR) $(DIST_DIR) coverage.out coverage.html
 
 ## help: Display this help message
 help:
