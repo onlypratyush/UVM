@@ -155,6 +155,7 @@ detect_existing_node() {
     local node_bin=""
     local candidates=(
         "$(command -v node 2>/dev/null || true)"
+        "${NVM_BIN}/node"
         "/opt/homebrew/bin/node"
         "/usr/local/bin/node"
         "/usr/bin/node"
@@ -164,6 +165,13 @@ detect_existing_node() {
         "${HOME}/.volta/bin/node"
         "${HOME}/.asdf/shims/node"
     )
+
+    # Check NVM versions directories
+    for nvm_node in "${HOME}"/.nvm/versions/node/*/bin/node; do
+        if [ -x "${nvm_node}" ]; then
+            candidates+=("${nvm_node}")
+        fi
+    done
 
     for c in "${candidates[@]}"; do
         if [ -n "${c}" ] && [ -x "${c}" ]; then
@@ -357,15 +365,34 @@ install_uvm() {
         echo ""
 
         local action="${NODE_ACTION}"
-        if [ -z "${action}" ] && [ -t 0 ]; then
+        local has_tty=0
+        if [ -t 0 ]; then
+            has_tty=1
+        elif [ -r /dev/tty ] && [ -w /dev/tty ]; then
+            has_tty=2
+        fi
+
+        if [ -z "${action}" ] && [ "${has_tty}" -gt 0 ]; then
             echo "How would you like UVM to handle it?"
             echo -e "  ${GREEN}[1] Move to UVM (Recommended)${NC} - Keep current Node.js and let UVM manage it"
             echo "  [2] Delete existing Node.js   - Remove existing installation"
             echo "  [3] Keep existing Node.js     - Leave existing installation unchanged"
-            read -r -p "Choice [1-3] (Default: 1): " choice
+
+            local choice="1"
+            if [ "${has_tty}" -eq 1 ]; then
+                read -r -p "Choice [1-3] (Default: 1): " choice || choice="1"
+            else
+                read -r -p "Choice [1-3] (Default: 1): " choice < /dev/tty || choice="1"
+            fi
+
             case "${choice}" in
                 2)
-                    read -r -p "Are you sure you want to delete existing Node.js? [y/N]: " confirm
+                    local confirm=""
+                    if [ "${has_tty}" -eq 1 ]; then
+                        read -r -p "Are you sure you want to delete existing Node.js? [y/N]: " confirm || confirm="n"
+                    else
+                        read -r -p "Are you sure you want to delete existing Node.js? [y/N]: " confirm < /dev/tty || confirm="n"
+                    fi
                     if [[ "${confirm}" =~ ^[Yy] ]]; then
                         action="delete"
                         CONFIRM_DELETE="1"
