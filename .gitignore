@@ -28,3 +28,11 @@ go.work
 .vscode/
 *.swp
 *.swo
+
+# Development & Visual Test Scripts
+dev_test.sh
+dev_test_all.sh
+scripts/dev_test_all.sh
+.dev_test/
+.dev_env/
+
