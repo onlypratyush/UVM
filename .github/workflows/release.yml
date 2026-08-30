@@ -5,6 +5,8 @@ on:
     tags:
       - 'v*'
 
+  workflow_dispatch:
+
 permissions:
   contents: write
 
@@ -20,37 +22,63 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.27'
           cache: true
 
-      - name: Install Zip tool
+      - name: Install Zip
         run: sudo apt-get update && sudo apt-get install -y zip
 
       - name: Extract Tag Version
         id: get_version
+        shell: bash
         run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG_NAME#v}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            TAG_NAME="v0.0.0-test"
+          fi
 
-      - name: Build and Package Cross-Platform Binaries
+          VERSION="${TAG_NAME#v}"
+
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          echo "Tag: ${TAG_NAME}"
+          echo "Version: ${VERSION}"
+
+      - name: Build
         run: |
           chmod +x ./scripts/build.sh
-          ./scripts/build.sh ${{ steps.get_version.outputs.version }}
+          ./scripts/build.sh "${{ steps.get_version.outputs.version }}"
+
+      - name: Verify build output
+        run: |
+          echo "===== DIST ====="
+          find dist -maxdepth 1 -type f -printf '%f\n' | sort
+
+          echo ""
+          echo "===== INSTALLER ====="
+          ls -lh dist/installer.exe
+
+          echo ""
+          echo "===== FILE TYPE ====="
+          file dist/installer.exe
 
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ steps.get_version.outputs.tag }}
           tag_name: ${{ steps.get_version.outputs.tag }}
+          name: UVM ${{ steps.get_version.outputs.tag }}
           draft: false
           prerelease: false
           generate_release_notes: true
           files: |
             dist/installer.exe
-            dist/uvm-*
-            dist/uvm-installer-*
-            dist/uvm_*.tar.gz
+            dist/uvm-windows-amd64.exe
+            dist/uvm-windows-arm64.exe
+            dist/uvm-installer-windows-amd64.exe
+            dist/uvm-installer-windows-arm64.exe
             dist/uvm_*.zip
+            dist/uvm_*.tar.gz
             dist/checksums.txt
