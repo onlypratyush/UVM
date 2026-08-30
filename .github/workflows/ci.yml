@@ -42,12 +42,11 @@ jobs:
           TOTAL_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
           echo "Total Statement Coverage: ${TOTAL_COVERAGE}"
 
-      - name: Build CLI and Visual Installer
+      - name: Build CLI Binary
         shell: bash
         run: |
           mkdir -p bin
           go build -o bin/ main.go
-          go build -o bin/ cmd/installer/main.go
 
       - name: Test macOS/Linux Installer Script
         if: matrix.os != 'windows-latest'
