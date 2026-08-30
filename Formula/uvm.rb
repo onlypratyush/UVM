@@ -1,7 +1,7 @@
 class Uvm < Formula
   desc "Universal Version Manager for programming language runtimes"
   homepage "https://github.com/onlypratyush/UVM-"
-  version "0.0.5"
+  version "0.0.6"
   license "MIT"
 
   on_macos do
