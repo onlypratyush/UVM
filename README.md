@@ -138,7 +138,6 @@ uvm rm node 18.20.0
 1. **Build `uvm.exe` and `installer.exe`**:
    ```powershell
    go build -o bin/uvm.exe main.go
-   go build -o bin/installer.exe cmd/installer/main.go
    $env:Path = "$PWD\bin;$env:Path"
    ```
 2. **Verify CLI**:
@@ -164,14 +163,79 @@ uvm rm node 18.20.0
    uvm use node 18.20.0
    node -v    # Output: v18.20.0
    ```
-6. **Test Visual Web GUI Installer**:
-   ```powershell
-   .\bin\installer.exe --web
-   ```
-7. **Run Unit Tests on Windows**:
+6. **Run Unit Tests on Windows**:
    ```powershell
    go test -v ./...
    ```
+
+---
+
+## 🛠️ Troubleshooting & Common Issues
+
+### 1. `zsh: command not found: node` or `uvm: command not found`
+* **Cause**: Your shell session hasn't loaded `~/.uvm/bin` into its `$PATH`.
+* **Fix for macOS / Linux**:
+  1. Ensure the following lines are in your `~/.zshrc` or `~/.bashrc`:
+     ```bash
+     export UVM_INSTALL="$HOME/.uvm"
+     export PATH="$HOME/.uvm/bin:$PATH"
+     ```
+  2. Apply the changes to your current terminal:
+     ```bash
+     source ~/.zshrc   # or source ~/.bashrc
+     ```
+  3. Every new terminal tab or window will automatically load `uvm` and active runtime binaries (`node`, `npm`, `npx`).
+
+* **Fix for Windows (PowerShell)**:
+  1. Restart PowerShell, or apply it to your current session immediately:
+     ```powershell
+     $env:Path = "$HOME\.uvm\bin;" + $env:Path
+     ```
+
+---
+
+### 2. Homebrew: `Refusing to load formula from untrusted tap` or `Repository not found`
+* **Cause**: Modern Homebrew (4.0+) requires explicit tap URLs and trust confirmation for third-party taps.
+* **Fix**:
+  ```bash
+  # 1. Tap with the full repository URL
+  brew tap onlypratyush/uvm https://github.com/onlypratyush/UVM-
+
+  # 2. Trust the tap
+  brew trust onlypratyush/uvm
+
+  # 3. Install uvm
+  brew install uvm
+  ```
+
+---
+
+### 3. "Existing Node.js Installation Found" During Installation
+* **Cause**: UVM detected a pre-existing Node.js installation (via Program Files, NVM, Homebrew, Volta, or PATH).
+* **Options Explained**:
+  * **`[1] Move to UVM (Recommended)`**: Copies your currently installed Node.js into UVM (`~/.uvm/versions/node/<version>`), activates it, and cleans up legacy PATH entries.
+  * **`[2] Delete existing Node.js`**: Safely removes the previous standalone installation and configures UVM as your sole runtime manager.
+  * **`[3] Keep existing Node.js`**: Leaves your existing installation untouched and installs UVM alongside it.
+
+---
+
+### 4. Node.js Version Does Not Switch (Shadowed by NVM, FNM, or Volta)
+* **Cause**: If NVM or another version manager is sourced *after* UVM in your shell configuration, its shims take precedence in `$PATH`.
+* **Fix**: Ensure UVM's `PATH` export is placed at the **bottom** of your `~/.zshrc` or `~/.bashrc`:
+  ```bash
+  # Place at the very end of ~/.zshrc
+  export PATH="$HOME/.uvm/bin:$PATH"
+  ```
+
+---
+
+### 5. Windows PowerShell Script Execution Disabled
+* **Cause**: Default Windows PowerShell restricts running downloaded scripts.
+* **Fix**: Enable script execution for the current user and rerun the installer:
+  ```powershell
+  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+  irm https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.ps1 | iex
+  ```
 
 ---
 
@@ -183,22 +247,25 @@ uvm/
 │   └── workflows/
 │       ├── ci.yml            # Multi-OS CI & test coverage validation
 │       └── release.yml       # Automated cross-platform GitHub release pipeline
-├── cmd/
-│   └── installer/            # Visual / Web GUI installer application
-│       ├── main.go
-│       └── main_test.go
-├── pkg/
-│   ├── installer/            # Visual installation engine, Web UI & API
-│   │   ├── installer.go
-│   │   └── installer_test.go
-│   └── node/                 # Node.js runtime manager & extraction engine
-│       ├── manager.go
-│       └── manager_test.go
+├── Formula/
+│   └── uvm.rb                # Direct Homebrew Formula for repository tapping
 ├── packaging/
 │   ├── homebrew/
 │   │   └── uvm.rb            # Homebrew Formula
 │   └── scoop/
 │       └── uvm.json          # Windows Scoop Manifest
+├── pkg/
+│   ├── installer/            # Cross-platform runtime detector & safe migration engine
+│   │   ├── installer.go
+│   │   ├── installer_test.go
+│   │   ├── runtime_detector.go
+│   │   ├── runtime_migrator.go
+│   │   ├── windows_env.go
+│   │   ├── windows_env_windows.go
+│   │   └── windows_env_other.go
+│   └── node/                 # Node.js runtime manager & extraction engine
+│       ├── manager.go
+│       └── manager_test.go
 ├── scripts/
 │   └── build.sh              # Cross-platform build & packaging automation
 ├── tests/
