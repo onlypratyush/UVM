@@ -16,7 +16,7 @@ import (
 )
 
 // Version is the embedded uvm version
-const Version = "0.0.1"
+const Version = "0.0.3"
 
 // Options holds configuration for the visual and CLI installer.
 type Options struct {

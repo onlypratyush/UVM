@@ -1,6 +1,6 @@
 # 🚀 uvm (Universal Version Manager)
 
-[![Release](https://img.shields.io/badge/release-v0.0.1-blue.svg)](https://github.com/onlypratyush/UVM-)
+[![Release](https://img.shields.io/badge/release-v0.0.3-blue.svg)](https://github.com/onlypratyush/UVM-)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg?style=flat&logo=go)](https://golang.org)
 [![Coverage](https://img.shields.io/badge/coverage-94.6%25-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
