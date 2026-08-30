@@ -207,6 +207,22 @@ func (m *Manager) ResolveVersion(versionInput string) (string, error) {
 	return m.ResolveRemoteVersion(versionInput)
 }
 
+// GetReleaseTagForVersion maps Python versions to known release tags or falls back to latest tag
+func (m *Manager) GetReleaseTagForVersion(v string) string {
+	versionTagMap := map[string]string{
+		"3.13.2":  "20250212",
+		"3.12.9":  "20250212",
+		"3.11.11": "20250212",
+		"3.10.16": "20250212",
+		"3.9.21":  "20250212",
+		"3.8.20":  "20241016",
+	}
+	if tag, ok := versionTagMap[v]; ok {
+		return tag
+	}
+	return m.FetchLatestReleaseTag()
+}
+
 // FetchLatestReleaseTag retrieves the active tag from latest-release metadata or falls back to DefaultTag
 func (m *Manager) FetchLatestReleaseTag() string {
 	if m.MetadataURL == "" {
@@ -289,7 +305,7 @@ func (m *Manager) Install(versionInput string, out io.Writer) error {
 		return m.Use(version, out)
 	}
 
-	tag := m.FetchLatestReleaseTag()
+	tag := m.GetReleaseTagForVersion(version)
 	fileName, isZip, err := m.GetArchiveTarget(version, tag)
 	if err != nil {
 		return err
@@ -301,6 +317,19 @@ func (m *Manager) Install(versionInput string, out io.Writer) error {
 	resp, err := m.HTTPClient.Get(downloadURL)
 	if err != nil {
 		return fmt.Errorf("failed to download Python archive: %w", err)
+	}
+
+	// Fallback to default tag if initial tag returns 404
+	if resp.StatusCode != http.StatusOK && tag != m.DefaultTag {
+		resp.Body.Close()
+		tag = m.DefaultTag
+		fileName, isZip, _ = m.GetArchiveTarget(version, tag)
+		downloadURL = fmt.Sprintf("%s/%s/%s", strings.TrimSuffix(m.PythonDistURL, "/"), tag, fileName)
+		fmt.Fprintf(out, "Retrying with tag %s from %s...\n", tag, downloadURL)
+		resp, err = m.HTTPClient.Get(downloadURL)
+		if err != nil {
+			return fmt.Errorf("failed to download Python archive: %w", err)
+		}
 	}
 	defer resp.Body.Close()
 
