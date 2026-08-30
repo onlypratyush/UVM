@@ -3,27 +3,20 @@
 # ==============================================================================
 
 BINARY_NAME=uvm
-INSTALLER_NAME=uvm-installer
 VERSION?=0.0.3
 DIST_DIR=dist
 BIN_DIR=bin
 INSTALL_DIR?=$(HOME)/.uvm/bin
 
-.PHONY: all build build-installer test test-coverage install uninstall cross-compile package clean help
+.PHONY: all build test test-coverage install uninstall cross-compile package clean help
 
-all: test build build-installer
+all: test build
 
 ## build: Compile local CLI binary for current platform
 build:
 	@mkdir -p $(BIN_DIR)
 	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BIN_DIR)/$(BINARY_NAME) main.go
 	@echo "Built $(BIN_DIR)/$(BINARY_NAME)"
-
-## build-installer: Compile local visual installer for current platform
-build-installer:
-	@mkdir -p $(BIN_DIR)
-	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BIN_DIR)/$(INSTALLER_NAME) cmd/installer/main.go
-	@echo "Built $(BIN_DIR)/$(INSTALLER_NAME)"
 
 ## test: Run unit tests across all packages
 test:

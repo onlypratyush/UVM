@@ -10,28 +10,28 @@
 
 ---
 
-## ⚡ Quick Install Options
+## ⚡ Quick Installation
 
-### 1. 🖥️ Visual Interactive & Web GUI Installers
-
-| Platform | Visual Executable | GUI Mode |
-| :--- | :--- | :--- |
-| 🪟 **Windows** | [`installer.exe`](https://github.com/onlypratyush/UVM-/releases/latest/download/installer.exe) | Double-click or `.\installer.exe --web` |
-| 🍎 **macOS** | [`uvm-installer-darwin-arm64`](https://github.com/onlypratyush/UVM-/releases/latest/download/uvm-installer-darwin-arm64) / `amd64` | `./uvm-installer-darwin-arm64 --web` |
-| 🐧 **Linux** | [`uvm-installer-linux-amd64`](https://github.com/onlypratyush/UVM-/releases/latest/download/uvm-installer-linux-amd64) / `arm64` | `./uvm-installer-linux-amd64 --web` |
-
----
-
-### 2. ⚡ One-Line Automated Terminal Installers
-
-#### 🍎 macOS & 🐧 Linux
+### 🍎 macOS & 🐧 Linux
 ```bash
 curl -fsSL https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.sh | bash
 ```
 
-#### 🪟 Windows (PowerShell)
+### 🪟 Windows (PowerShell)
 ```powershell
 irm https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.ps1 | iex
+```
+
+### 🍺 Homebrew (macOS / Linux)
+```bash
+brew tap onlypratyush/uvm
+brew install uvm
+```
+
+### 🍨 Scoop (Windows)
+```powershell
+scoop bucket add uvm https://github.com/onlypratyush/UVM-
+scoop install uvm
 ```
 
 ---

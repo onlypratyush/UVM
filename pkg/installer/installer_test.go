@@ -2,14 +2,10 @@ package installer
 
 import (
 	"bytes"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // helper to create a guaranteed impossible directory across all platforms (Windows, Linux, macOS)
@@ -18,12 +14,6 @@ func getImpossibleDir(t *testing.T) string {
 	blockingFile := filepath.Join(tmpDir, "blocking_file.txt")
 	_ = os.WriteFile(blockingFile, []byte("block"), 0644)
 	return filepath.Join(blockingFile, "sub_dir", "bin")
-}
-
-func TestBrowserOpener(t *testing.T) {
-	_ = BrowserOpener("http://localhost:8484", "darwin")
-	_ = BrowserOpener("http://localhost:8484", "windows")
-	_ = BrowserOpener("http://localhost:8484", "linux")
 }
 
 func TestGetDefaultInstallDir(t *testing.T) {
@@ -342,110 +332,6 @@ func TestRunVisualCLI(t *testing.T) {
 	}
 }
 
-func TestWebServerEndpoints(t *testing.T) {
-	tmpHome := t.TempDir()
-	srv := NewWebServer(Options{Port: 9898}, tmpHome, "linux")
-
-	// 1. GET /
-	reqIndex := httptest.NewRequest(http.MethodGet, "/", nil)
-	wIndex := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wIndex, reqIndex)
-	if wIndex.Code != http.StatusOK || !strings.Contains(wIndex.Body.String(), "uvm") {
-		t.Errorf("GET / returned unexpected response: %d", wIndex.Code)
-	}
-
-	// 2. GET /notfound
-	req404 := httptest.NewRequest(http.MethodGet, "/random-page", nil)
-	w404 := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w404, req404)
-	if w404.Code != http.StatusNotFound {
-		t.Errorf("expected 404 for invalid page, got %d", w404.Code)
-	}
-
-	// 3. GET /api/status
-	reqStatus := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-	wStatus := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wStatus, reqStatus)
-	if wStatus.Code != http.StatusOK {
-		t.Errorf("GET /api/status returned %d", wStatus.Code)
-	}
-	var sysInfo SystemInfo
-	if err := json.NewDecoder(wStatus.Body).Decode(&sysInfo); err != nil || sysInfo.OS != "linux" {
-		t.Errorf("invalid status JSON: %+v, err: %v", sysInfo, err)
-	}
-
-	// 4. POST /api/install
-	installPayload := Options{
-		InstallDir: filepath.Join(tmpHome, "web_bin"),
-		ModifyPath: true,
-	}
-	body, _ := json.Marshal(installPayload)
-	reqInstall := httptest.NewRequest(http.MethodPost, "/api/install", bytes.NewReader(body))
-	wInstall := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wInstall, reqInstall)
-	if wInstall.Code != http.StatusOK {
-		t.Errorf("POST /api/install returned %d", wInstall.Code)
-	}
-
-	// 5. POST /api/install invalid method
-	reqInstallBadMethod := httptest.NewRequest(http.MethodGet, "/api/install", nil)
-	wInstallBadMethod := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wInstallBadMethod, reqInstallBadMethod)
-	if wInstallBadMethod.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405 for GET /api/install, got %d", wInstallBadMethod.Code)
-	}
-
-	// 6. POST /api/install with invalid payload fallback
-	reqInstallInvalidBody := httptest.NewRequest(http.MethodPost, "/api/install", bytes.NewReader([]byte("bad-json")))
-	wInstallInvalidBody := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wInstallInvalidBody, reqInstallInvalidBody)
-	if wInstallInvalidBody.Code != http.StatusOK {
-		t.Errorf("expected fallback install, got %d", wInstallInvalidBody.Code)
-	}
-
-	// 7. POST /api/uninstall
-	reqUninstall := httptest.NewRequest(http.MethodPost, "/api/uninstall", bytes.NewReader(body))
-	wUninstall := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wUninstall, reqUninstall)
-	if wUninstall.Code != http.StatusOK {
-		t.Errorf("POST /api/uninstall returned %d", wUninstall.Code)
-	}
-
-	// 8. GET /api/uninstall invalid method
-	reqUninstallBadMethod := httptest.NewRequest(http.MethodGet, "/api/uninstall", nil)
-	wUninstallBadMethod := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wUninstallBadMethod, reqUninstallBadMethod)
-	if wUninstallBadMethod.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405 for GET /api/uninstall, got %d", wUninstallBadMethod.Code)
-	}
-
-	// 9. GET /api/verify
-	reqVerify := httptest.NewRequest(http.MethodGet, "/api/verify", nil)
-	wVerify := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wVerify, reqVerify)
-	if wVerify.Code != http.StatusOK {
-		t.Errorf("GET /api/verify returned %d", wVerify.Code)
-	}
-
-	// 10. GET /api/detect-runtimes
-	reqDetect := httptest.NewRequest(http.MethodGet, "/api/detect-runtimes", nil)
-	wDetect := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wDetect, reqDetect)
-	if wDetect.Code != http.StatusOK {
-		t.Errorf("GET /api/detect-runtimes returned %d", wDetect.Code)
-	}
-
-	// 11. POST /api/install with error
-	badInstallPayload := Options{InstallDir: getImpossibleDir(t)}
-	badBody, _ := json.Marshal(badInstallPayload)
-	reqBadInstall := httptest.NewRequest(http.MethodPost, "/api/install", bytes.NewReader(badBody))
-	wBadInstall := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(wBadInstall, reqBadInstall)
-	if wBadInstall.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500 for bad install, got %d", wBadInstall.Code)
-	}
-}
-
 func TestRunVisualCLIWithRuntimeChoices(t *testing.T) {
 	tmpHome := t.TempDir()
 
@@ -469,30 +355,4 @@ func TestRunVisualCLIWithRuntimeChoices(t *testing.T) {
 	inBuf = bytes.NewBufferString("3\n")
 	opts3 := Options{InstallDir: filepath.Join(tmpHome, "bin3"), ModifyPath: false}
 	_ = RunVisualCLI(opts3, inBuf, outBuf, tmpHome, "linux")
-}
-
-func TestStartWebUIBackground(t *testing.T) {
-	openedChan := make(chan bool, 1)
-	SetBrowserOpener(func(url string, goos string) error {
-		select {
-		case openedChan <- true:
-		default:
-		}
-		return nil
-	})
-	defer SetBrowserOpener(defaultBrowserOpener)
-
-	tmpHome := t.TempDir()
-	opts := Options{Port: 0}
-
-	go func() {
-		_ = StartWebUI(opts, tmpHome, "linux")
-	}()
-
-	select {
-	case <-openedChan:
-		// Browser opened successfully
-	case <-time.After(500 * time.Millisecond):
-		t.Logf("browser opener timed out in test")
-	}
 }
