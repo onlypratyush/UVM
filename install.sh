@@ -382,7 +382,7 @@ install_uvm() {
             if [ "${has_tty}" -eq 1 ]; then
                 read -r -p "Choice [1-3] (Default: 1): " choice || choice="1"
             else
-                read -r -p "Choice [1-3] (Default: 1): " choice < /dev/tty || choice="1"
+                read -r -p "Choice [1-3] (Default: 1): " choice < /dev/tty 2>/dev/null || choice="1"
             fi
 
             case "${choice}" in
@@ -391,7 +391,7 @@ install_uvm() {
                     if [ "${has_tty}" -eq 1 ]; then
                         read -r -p "Are you sure you want to delete existing Node.js? [y/N]: " confirm || confirm="n"
                     else
-                        read -r -p "Are you sure you want to delete existing Node.js? [y/N]: " confirm < /dev/tty || confirm="n"
+                        read -r -p "Are you sure you want to delete existing Node.js? [y/N]: " confirm < /dev/tty 2>/dev/null || confirm="n"
                     fi
                     if [[ "${confirm}" =~ ^[Yy] ]]; then
                         action="delete"
