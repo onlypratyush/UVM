@@ -6,12 +6,12 @@
   "architecture": {
     "64bit": {
       "url": "https://github.com/onlypratyush/UVM-/releases/download/v0.0.5/uvm_v0.0.5_windows_amd64.zip",
-      "hash": "6e129da4ff5d22f7ab06cc58cf5a752fafa4ceea3724a7c55719d137432cf26a",
+      "hash": "0f93b240371d636378ea22d2e646224328eca75a146b04feb56974df78fa5136",
       "bin": "uvm.exe"
     },
     "arm64": {
       "url": "https://github.com/onlypratyush/UVM-/releases/download/v0.0.5/uvm_v0.0.5_windows_arm64.zip",
-      "hash": "9b46d6b34eae4d2e6adc4b280167f42aee14317c09a09fd58d2492a88ba0c8eb",
+      "hash": "7e35e4c8fe794f3df66bc7495b8f5ce56f049bdb95551432da9dbc91c27abc34",
       "bin": "uvm.exe"
     }
   },
