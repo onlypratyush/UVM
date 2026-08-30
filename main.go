@@ -15,7 +15,7 @@ import (
 	"uvm/pkg/scaffold"
 )
 
-var version = "0.0.4"
+var version = "0.0.5"
 
 var supportedRuntimes = []string{"node", "go", "python"}
 
