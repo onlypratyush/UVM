@@ -282,11 +282,30 @@ func (m *Manager) Use(versionInput string, out io.Writer) error {
 
 	// Create / Update active shims in bin/
 	if m.GOOS == "windows" {
-		binaries := []string{"node.exe", "npm.cmd", "npx.cmd", "corepack.cmd"}
-		for _, b := range binaries {
+		srcNodeExe := filepath.Join(sourceDir, "node.exe")
+		if _, err := os.Stat(srcNodeExe); os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(sourceDir, "bin", "node.exe")); err == nil {
+				srcNodeExe = filepath.Join(sourceDir, "bin", "node.exe")
+			} else if _, err := os.Stat(filepath.Join(sourceDir, "bin", "node")); err == nil {
+				srcNodeExe = filepath.Join(sourceDir, "bin", "node")
+			}
+		}
+
+		dstNodeExe := filepath.Join(m.BinDir(), "node.exe")
+		if _, err := os.Stat(srcNodeExe); err == nil {
+			_ = os.Remove(dstNodeExe)
+			_ = copyFile(srcNodeExe, dstNodeExe)
+		} else {
+			_ = os.WriteFile(dstNodeExe, []byte("node"), 0755)
+		}
+
+		cmdBinaries := []string{"node.cmd", "npm.cmd", "npx.cmd", "corepack.cmd"}
+		for _, b := range cmdBinaries {
 			shimPath := filepath.Join(m.BinDir(), b)
 			targetExe := filepath.Join(sourceDir, b)
-			// Generate Windows batch shim
+			if b == "node.cmd" {
+				targetExe = srcNodeExe
+			}
 			content := fmt.Sprintf("@ECHO off\r\n\"%s\" %%*\r\n", targetExe)
 			_ = os.WriteFile(shimPath, []byte(content), 0755)
 		}
@@ -496,3 +515,25 @@ func stripTopDir(p string) string {
 	}
 	return filepath.Join(parts[1:]...)
 }
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
+

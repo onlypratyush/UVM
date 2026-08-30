@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,31 +28,39 @@ type Options struct {
 	Silent            bool   `json:"silent"`
 	WebMode           bool   `json:"webMode"`
 	Port              int    `json:"port"`
+	NodeAction        string `json:"nodeAction"`    // "move" (default), "delete", "keep", ""
+	ConfirmDelete     bool   `json:"confirmDelete"` // required when NodeAction == "delete"
 }
 
-// SystemInfo encapsulates detected platform details.
+// SystemInfo encapsulates detected platform details and existing runtimes.
 type SystemInfo struct {
-	OS               string `json:"os"`
-	Arch             string `json:"arch"`
-	DefaultDir       string `json:"defaultDir"`
-	DetectedShell    string `json:"detectedShell"`
-	IsInstalled      bool   `json:"isInstalled"`
-	InstalledVersion string `json:"installedVersion"`
-	HomeDir          string `json:"homeDir"`
+	OS               string            `json:"os"`
+	Arch             string            `json:"arch"`
+	DefaultDir       string            `json:"defaultDir"`
+	DetectedShell    string            `json:"detectedShell"`
+	IsInstalled      bool              `json:"isInstalled"`
+	InstalledVersion string            `json:"installedVersion"`
+	HomeDir          string            `json:"homeDir"`
+	DetectedRuntimes []DetectedRuntime `json:"detectedRuntimes"`
 }
 
 // InstallResult reports the outcome of the installation process.
 type InstallResult struct {
-	Success        bool     `json:"success"`
-	Message        string   `json:"message"`
-	BinaryPath     string   `json:"binaryPath"`
-	PathConfigured bool     `json:"pathConfigured"`
-	ConfigFile     string   `json:"configFile,omitempty"`
-	Errors         []string `json:"errors,omitempty"`
+	Success          bool               `json:"success"`
+	Message          string             `json:"message"`
+	BinaryPath       string             `json:"binaryPath"`
+	PathConfigured   bool               `json:"pathConfigured"`
+	ConfigFile       string             `json:"configFile,omitempty"`
+	MigrationResults []*MigrationResult `json:"migrationResults,omitempty"`
+	Errors           []string           `json:"errors,omitempty"`
 }
 
-// BrowserOpener is a function hook to open URLs in testing or production.
-var BrowserOpener = func(url string, goos string) error {
+var (
+	browserOpenerMu sync.RWMutex
+	browserOpenerFn = defaultBrowserOpener
+)
+
+func defaultBrowserOpener(url string, goos string) error {
 	var cmd *exec.Cmd
 	switch goos {
 	case "windows":
@@ -63,6 +73,21 @@ var BrowserOpener = func(url string, goos string) error {
 	return cmd.Start()
 }
 
+// BrowserOpener is a function hook to open URLs in testing or production.
+var BrowserOpener = func(url string, goos string) error {
+	browserOpenerMu.RLock()
+	fn := browserOpenerFn
+	browserOpenerMu.RUnlock()
+	return fn(url, goos)
+}
+
+// SetBrowserOpener sets a custom browser opener function in a thread-safe manner.
+func SetBrowserOpener(fn func(url string, goos string) error) {
+	browserOpenerMu.Lock()
+	browserOpenerFn = fn
+	browserOpenerMu.Unlock()
+}
+
 // GetDefaultInstallDir returns the standard installation directory for the platform.
 func GetDefaultInstallDir(homeDir string, goos string) string {
 	if homeDir == "" {
@@ -71,7 +96,7 @@ func GetDefaultInstallDir(homeDir string, goos string) string {
 	return filepath.Join(homeDir, ".uvm", "bin")
 }
 
-// DetectSystemInfo detects current OS, architecture, shell, and install state.
+// DetectSystemInfo detects current OS, architecture, shell, install state, and existing runtimes.
 func DetectSystemInfo(customHome string, goos string, goarch string) SystemInfo {
 	if goos == "" {
 		goos = runtime.GOOS
@@ -115,6 +140,9 @@ func DetectSystemInfo(customHome string, goos string, goarch string) SystemInfo 
 		detectedShell = "fish"
 	}
 
+	detector := NewRuntimeDetector(homeDir, goos)
+	detectedRuntimes := detector.DetectAllRuntimes()
+
 	return SystemInfo{
 		OS:               goos,
 		Arch:             goarch,
@@ -123,13 +151,25 @@ func DetectSystemInfo(customHome string, goos string, goarch string) SystemInfo 
 		IsInstalled:      isInstalled,
 		InstalledVersion: installedVersion,
 		HomeDir:          homeDir,
+		DetectedRuntimes: detectedRuntimes,
 	}
 }
 
 // UpdateShellProfile adds the uvm bin directory to the user's shell config or Windows path.
 func UpdateShellProfile(installDir string, homeDir string, userShell string, goos string) (string, error) {
 	if goos == "windows" {
+		pathMgr := NewPlatformPathManager(homeDir, userShell)
+		err := pathMgr.AddEntry(installDir)
+		if err != nil {
+			return "Windows User PATH", err
+		}
 		return "Windows User PATH registry variable", nil
+	}
+
+	pathMgr := NewPlatformPathManager(homeDir, userShell)
+	err := pathMgr.AddEntry(installDir)
+	if err != nil {
+		return "", err
 	}
 
 	var targetConfigFile string
@@ -147,39 +187,11 @@ func UpdateShellProfile(installDir string, homeDir string, userShell string, goo
 		}
 	}
 
-	configDir := filepath.Dir(targetConfigFile)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return "", err
-	}
-
-	content := ""
-	if data, err := os.ReadFile(targetConfigFile); err == nil {
-		content = string(data)
-	}
-
-	if strings.Contains(content, "uvm") {
-		return targetConfigFile, nil
-	}
-
-	var block string
-	if strings.Contains(targetConfigFile, "fish") {
-		block = fmt.Sprintf("\n# uvm (Universal Version Manager)\nfish_add_path %s\n", installDir)
-	} else {
-		parentDir := filepath.Dir(installDir)
-		block = fmt.Sprintf("\n# uvm (Universal Version Manager)\nexport UVM_INSTALL=\"%s\"\nexport PATH=\"%s:$PATH\"\n", parentDir, installDir)
-	}
-
-	f, err := os.OpenFile(targetConfigFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(block)
-	return targetConfigFile, err
+	return targetConfigFile, nil
 }
 
-// Install copies or creates the uvm binary into the target directory and configures PATH.
+// Install copies or creates the uvm binary into the target directory, configures PATH,
+// and handles runtime migration/deletion if requested.
 func Install(opts Options, customHome string, goos string) (*InstallResult, error) {
 	if goos == "" {
 		goos = runtime.GOOS
@@ -241,12 +253,44 @@ func Install(opts Options, customHome string, goos string) (*InstallResult, erro
 		}
 	}
 
+	// Handle existing runtime migrations / deletions
+	var migrationResults []*MigrationResult
+	var errs []string
+
+	uvmBaseDir := filepath.Dir(targetDir)
+	pathMgr := NewPlatformPathManager(info.HomeDir, info.DetectedShell)
+	migrator := NewRuntimeMigrator(uvmBaseDir, goos, pathMgr)
+
+	for _, rt := range info.DetectedRuntimes {
+		if rt.Name == "node" && rt.Found {
+			switch opts.NodeAction {
+			case "move":
+				res, err := migrator.MigrateNode(rt)
+				if err != nil {
+					errs = append(errs, err.Error())
+				}
+				if res != nil {
+					migrationResults = append(migrationResults, res)
+				}
+			case "delete":
+				err := migrator.DeleteExistingNode(rt, opts.ConfirmDelete)
+				if err != nil {
+					errs = append(errs, err.Error())
+				}
+			case "keep", "":
+				// Keep existing node untouched
+			}
+		}
+	}
+
 	return &InstallResult{
-		Success:        true,
-		Message:        fmt.Sprintf("uvm v%s installed successfully!", Version),
-		BinaryPath:     destPath,
-		PathConfigured: pathConfigured,
-		ConfigFile:     configuredFile,
+		Success:          len(errs) == 0,
+		Message:          fmt.Sprintf("uvm v%s installed successfully!", Version),
+		BinaryPath:       destPath,
+		PathConfigured:   pathConfigured,
+		ConfigFile:       configuredFile,
+		MigrationResults: migrationResults,
+		Errors:           errs,
 	}, nil
 }
 
@@ -287,6 +331,10 @@ func copyFile(src, dst string) error {
 	}
 	defer in.Close()
 
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return err
@@ -324,6 +372,58 @@ func RunVisualCLI(opts Options, in io.Reader, out io.Writer, customHome string, 
 		return nil
 	}
 
+	// If runtime(s) detected and no action pre-configured in non-silent mode, prompt user
+	if len(info.DetectedRuntimes) > 0 && !opts.Silent && opts.NodeAction == "" {
+		for _, rt := range info.DetectedRuntimes {
+			if rt.Name == "node" && rt.Found {
+				fmt.Fprintln(out, "  \033[1;33m┌─────────────────────────────────────────────────────────────────┐\033[0m")
+				fmt.Fprintln(out, "  \033[1;33m│  Existing Node.js Installation Found                            │\033[0m")
+				fmt.Fprintf(out, "  \033[1;33m│\033[0m  Version:  \033[1;32m%-51s\033[0m\033[1;33m│\033[0m\n", rt.Version)
+				fmt.Fprintf(out, "  \033[1;33m│\033[0m  Location: %-51s\033[1;33m│\033[0m\n", rt.InstallDir)
+				fmt.Fprintf(out, "  \033[1;33m│\033[0m  Manager:  %-51s\033[1;33m│\033[0m\n", rt.ManagerType)
+				fmt.Fprintln(out, "  \033[1;33m└─────────────────────────────────────────────────────────────────┘\033[0m")
+				fmt.Fprintln(out, "  How would you like UVM to handle it?")
+				fmt.Fprintln(out, "    \033[1;32m[1] Move to UVM (Recommended)\033[0m - Keep your current Node.js version and let UVM manage it")
+				fmt.Fprintln(out, "    [2] Delete existing Node.js   - Remove the existing installation and let UVM manage Node.js")
+				fmt.Fprintln(out, "    [3] Keep existing Node.js     - Leave the existing installation unchanged")
+				fmt.Fprint(out, "\n  Choice [1-3] (Default: 1): ")
+
+				scanner := bufio.NewScanner(in)
+				choice := "1"
+				if scanner.Scan() {
+					text := strings.TrimSpace(scanner.Text())
+					if text != "" {
+						choice = text
+					}
+				}
+
+				switch choice {
+				case "2":
+					fmt.Fprint(out, "  \033[1;31mAre you sure you want to delete this installation? [y/N]: \033[0m")
+					confirm := false
+					if scanner.Scan() {
+						resp := strings.ToLower(strings.TrimSpace(scanner.Text()))
+						if resp == "y" || resp == "yes" {
+							confirm = true
+						}
+					}
+					if confirm {
+						opts.NodeAction = "delete"
+						opts.ConfirmDelete = true
+					} else {
+						fmt.Fprintln(out, "  Deletion cancelled. Defaulting to 'Move to UVM'.")
+						opts.NodeAction = "move"
+					}
+				case "3":
+					opts.NodeAction = "keep"
+				default:
+					opts.NodeAction = "move"
+				}
+				fmt.Fprintln(out, "")
+			}
+		}
+	}
+
 	targetDir := opts.InstallDir
 	if targetDir == "" {
 		targetDir = info.DefaultDir
@@ -343,13 +443,23 @@ func RunVisualCLI(opts Options, in io.Reader, out io.Writer, customHome string, 
 		fmt.Fprintf(out, "        PATH configured in: %s\n", res.ConfigFile)
 	}
 
+	for _, mig := range res.MigrationResults {
+		if mig.Success {
+			fmt.Fprintf(out, "  \033[1;32m[✓]\033[0m Migrated Node.js %s to UVM (%s)\n", mig.Version, mig.TargetDir)
+		}
+		if mig.WarningNotice != "" {
+			fmt.Fprintf(out, "  \033[1;33m[!]\033[0m %s\n", mig.WarningNotice)
+		}
+	}
+
 	fmt.Fprintln(out, "\n  \033[1;32m╔═════════════════════════════════════════════════════════════════╗")
 	fmt.Fprintf(out, "  ║  ✓ %-61s ║\n", res.Message)
 	fmt.Fprintln(out, "  ║                                                                 ║")
 	fmt.Fprintln(out, "  ║  Quick Start:                                                   ║")
 	fmt.Fprintf(out, "  ║  1. export PATH=\"%s:$PATH\"%-20s║\n", targetDir, " ")
 	fmt.Fprintln(out, "  ║  2. uvm --help                                                  ║")
-	fmt.Fprintln(out, "  ║  3. uvm install node 20.11.0                                    ║")
+	fmt.Fprintln(out, "  ║  3. uvm list node                                               ║")
+	fmt.Fprintln(out, "  ║  4. uvm install node 20.11.0                                    ║")
 	fmt.Fprintln(out, "  ╚═════════════════════════════════════════════════════════════════╝\033[0m")
 
 	return nil
@@ -374,6 +484,13 @@ func NewWebServer(opts Options, customHome string, goos string) *http.Server {
 		_ = json.NewEncoder(w).Encode(info)
 	})
 
+	mux.HandleFunc("/api/detect-runtimes", func(w http.ResponseWriter, r *http.Request) {
+		detector := NewRuntimeDetector(customHome, goos)
+		runtimes := detector.DetectAllRuntimes()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(runtimes)
+	})
+
 	mux.HandleFunc("/api/install", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -385,7 +502,7 @@ func NewWebServer(opts Options, customHome string, goos string) *http.Server {
 		}
 		res, err := Install(req, customHome, goos)
 		w.Header().Set("Content-Type", "application/json")
-		if err != nil {
+		if err != nil || (res != nil && !res.Success) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		_ = json.NewEncoder(w).Encode(res)
@@ -460,6 +577,8 @@ func GetWebUIHTML() string {
       --primary: #06b6d4;
       --primary-gradient: linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #8b5cf6 100%);
       --accent: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
       --text: #f8fafc;
       --text-muted: #94a3b8;
       --radius: 16px;
@@ -480,7 +599,7 @@ func GetWebUIHTML() string {
     }
     .container {
       width: 100%;
-      max-width: 640px;
+      max-width: 660px;
       background: var(--card-bg);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
@@ -491,7 +610,7 @@ func GetWebUIHTML() string {
     }
     .header {
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
     .logo {
       font-size: 38px;
@@ -511,6 +630,7 @@ func GetWebUIHTML() string {
       gap: 10px;
       justify-content: center;
       margin-top: 14px;
+      flex-wrap: wrap;
     }
     .badge {
       background: rgba(255, 255, 255, 0.05);
@@ -524,7 +644,7 @@ func GetWebUIHTML() string {
     .section {
       margin-bottom: 22px;
     }
-    label {
+    label.sec-title {
       display: block;
       font-size: 13px;
       font-weight: 600;
@@ -591,6 +711,96 @@ func GetWebUIHTML() string {
     }
     input:checked + .slider { background: var(--primary); }
     input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Node Detection Card */
+    .detected-card {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .detected-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .detected-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .node-ver-badge {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .location-box {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.3);
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+      word-break: break-all;
+    }
+    .options-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .opt-card {
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      cursor: pointer;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      transition: all 0.2s;
+    }
+    .opt-card:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(6, 182, 212, 0.4);
+    }
+    .opt-card.selected {
+      background: rgba(6, 182, 212, 0.1);
+      border-color: var(--primary);
+    }
+    .opt-card input[type="radio"] {
+      margin-top: 3px;
+      accent-color: var(--primary);
+    }
+    .opt-content h5 {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .opt-content p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .del-confirm-box {
+      display: none;
+      margin-top: 8px;
+      padding: 10px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 6px;
+      font-size: 12px;
+      color: #fca5a5;
+    }
+
     .btn {
       width: 100%;
       padding: 14px;
@@ -643,7 +853,7 @@ func GetWebUIHTML() string {
       padding: 12px;
       border-radius: 8px;
       border: 1px solid var(--card-border);
-      max-height: 120px;
+      max-height: 140px;
       overflow-y: auto;
     }
     .success-card {
@@ -688,15 +898,17 @@ func GetWebUIHTML() string {
     </div>
 
     <div id="setup-form">
+      <div id="detected-runtimes-container"></div>
+
       <div class="section">
-        <label>Installation Path</label>
+        <label class="sec-title">Installation Path</label>
         <div class="input-group">
           <input type="text" id="install-dir" value="Loading default...">
         </div>
       </div>
 
       <div class="section">
-        <label>Options</label>
+        <label class="sec-title">Options</label>
         <div class="toggle-row">
           <div class="toggle-info">
             <h4>Configure PATH Variable</h4>
@@ -741,9 +953,10 @@ func GetWebUIHTML() string {
 # Restart terminal or run:
 uvm --help
 
-# Install your favorite runtime:
+# Manage your runtimes:
+uvm list node
 uvm install node 20.11.0
-uvm install go 1.22.0
+uvm use node 20.11.0
       </div>
 
       <button class="btn btn-secondary" onclick="uninstall()">Uninstall uvm</button>
@@ -752,6 +965,7 @@ uvm install go 1.22.0
 
   <script>
     let sysInfo = {};
+    let selectedNodeAction = 'move';
 
     async function loadStatus() {
       try {
@@ -761,8 +975,74 @@ uvm install go 1.22.0
         document.getElementById('arch-badge').innerText = 'Arch: ' + sysInfo.arch;
         document.getElementById('shell-badge').innerText = 'Shell: ' + sysInfo.detectedShell;
         document.getElementById('install-dir').value = sysInfo.defaultDir;
+
+        renderDetectedRuntimes(sysInfo.detectedRuntimes || []);
       } catch (err) {
         console.error('Failed to load status:', err);
+      }
+    }
+
+    function renderDetectedRuntimes(runtimes) {
+      const container = document.getElementById('detected-runtimes-container');
+      container.innerHTML = '';
+
+      const nodeRt = runtimes.find(r => r.name === 'node' && r.found);
+      if (!nodeRt) return;
+
+      const card = document.createElement('div');
+      card.className = 'detected-card';
+      card.innerHTML = 
+        '<div class="detected-header">' +
+          '<div class="detected-title">' +
+            '<span>📦 Existing Node.js Found</span>' +
+            '<span class="node-ver-badge">' + (nodeRt.version || '') + '</span>' +
+          '</div>' +
+          '<span class="badge" style="font-size:11px;">' + (nodeRt.managerType || 'Detected') + '</span>' +
+        '</div>' +
+        '<div class="location-box">' + (nodeRt.installDir || '') + '</div>' +
+        '<div class="options-grid">' +
+          '<label class="opt-card selected" id="opt-move" onclick="selectAction(\'move\')">' +
+            '<input type="radio" name="node_action" value="move" checked>' +
+            '<div class="opt-content">' +
+              '<h5>Move to UVM (Recommended)</h5>' +
+              '<p>Preserve your current Node.js version and let UVM manage it seamlessly.</p>' +
+            '</div>' +
+          '</label>' +
+          '<label class="opt-card" id="opt-delete" onclick="selectAction(\'delete\')">' +
+            '<input type="radio" name="node_action" value="delete">' +
+            '<div class="opt-content">' +
+              '<h5>Delete existing Node.js</h5>' +
+              '<p>Remove the existing installation and let UVM become responsible for Node.js.</p>' +
+            '</div>' +
+          '</label>' +
+          '<div class="del-confirm-box" id="del-confirm">' +
+            '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;">' +
+              '<input type="checkbox" id="confirm-del-check">' +
+              '<span>I confirm deletion of this existing Node.js installation</span>' +
+            '</label>' +
+          '</div>' +
+          '<label class="opt-card" id="opt-keep" onclick="selectAction(\'keep\')">' +
+            '<input type="radio" name="node_action" value="keep">' +
+            '<div class="opt-content">' +
+              '<h5>Keep existing Node.js</h5>' +
+              '<p>Leave existing installation unchanged (may take precedence until configured).</p>' +
+            '</div>' +
+          '</label>' +
+        '</div>';
+      container.appendChild(card);
+    }
+
+    function selectAction(action) {
+      selectedNodeAction = action;
+      document.querySelectorAll('.opt-card').forEach(c => c.classList.remove('selected'));
+      const activeCard = document.getElementById('opt-' + action);
+      if (activeCard) {
+        activeCard.classList.add('selected');
+        activeCard.querySelector('input[type="radio"]').checked = true;
+      }
+      const delConfirm = document.getElementById('del-confirm');
+      if (delConfirm) {
+        delConfirm.style.display = (action === 'delete') ? 'block' : 'none';
       }
     }
 
@@ -779,32 +1059,51 @@ uvm install go 1.22.0
       const bar = document.getElementById('progress-bar');
       const setupForm = document.getElementById('setup-form');
 
+      let confirmDelete = false;
+      if (selectedNodeAction === 'delete') {
+        const check = document.getElementById('confirm-del-check');
+        if (check && !check.checked) {
+          alert('Please check the confirmation box before deleting existing Node.js.');
+          return;
+        }
+        confirmDelete = true;
+      }
+
       btn.disabled = true;
       progressBox.style.display = 'block';
 
       logStatus('Initializing setup...');
-      bar.style.width = '25%';
+      bar.style.width = '20%';
 
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 300));
       logStatus('Creating install directory: ' + document.getElementById('install-dir').value);
-      bar.style.width = '50%';
+      bar.style.width = '40%';
 
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 300));
       logStatus('Deploying uvm executable...');
-      bar.style.width = '75%';
+      bar.style.width = '60%';
 
       try {
         const payload = {
           installDir: document.getElementById('install-dir').value,
           modifyPath: document.getElementById('modify-path').checked,
-          createCompletions: document.getElementById('completions').checked
+          createCompletions: document.getElementById('completions').checked,
+          nodeAction: selectedNodeAction,
+          confirmDelete: confirmDelete
         };
+        logStatus('Handling runtime migration / configuration (' + selectedNodeAction + ')...');
+        bar.style.width = '80%';
+
         const res = await fetch('/api/install', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const data = await res.json();
+
+        if (!res.ok || (data.errors && data.errors.length > 0)) {
+          throw new Error((data.errors && data.errors.join(', ')) || data.message || 'Installation failed');
+        }
 
         bar.style.width = '100%';
         logStatus(data.message || 'Installation finished.');

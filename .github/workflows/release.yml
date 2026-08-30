@@ -75,10 +75,8 @@ jobs:
           generate_release_notes: true
           files: |
             dist/installer.exe
-            dist/uvm-windows-amd64.exe
-            dist/uvm-windows-arm64.exe
-            dist/uvm-installer-windows-amd64.exe
-            dist/uvm-installer-windows-arm64.exe
+            dist/uvm-*
+            dist/uvm-installer-*
             dist/uvm_*.zip
             dist/uvm_*.tar.gz
             dist/checksums.txt

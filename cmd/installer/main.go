@@ -21,6 +21,8 @@ func RunApp(args []string, in io.Reader, out, errOut io.Writer) error {
 	installDir := fs.String("dir", "", "Custom installation directory")
 	noPath := fs.Bool("no-path", false, "Do not modify shell profile PATH variable")
 	uninstall := fs.Bool("uninstall", false, "Uninstall uvm and clean up binary")
+	nodeAction := fs.String("node-action", "", "Action for existing Node.js: move, delete, keep")
+	confirmDelete := fs.Bool("confirm-delete", false, "Confirm deletion of existing Node.js when --node-action=delete")
 	help := fs.Bool("help", false, "Show help message")
 
 	if err := fs.Parse(args); err != nil {
@@ -37,12 +39,14 @@ func RunApp(args []string, in io.Reader, out, errOut io.Writer) error {
 	}
 
 	opts := installer.Options{
-		InstallDir: *installDir,
-		ModifyPath: !*noPath,
-		Uninstall:  *uninstall,
-		Silent:     *silent,
-		WebMode:    *webMode,
-		Port:       *port,
+		InstallDir:    *installDir,
+		ModifyPath:    !*noPath,
+		Uninstall:     *uninstall,
+		Silent:        *silent,
+		WebMode:       *webMode,
+		Port:          *port,
+		NodeAction:    *nodeAction,
+		ConfirmDelete: *confirmDelete,
 	}
 
 	if *webMode {

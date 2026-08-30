@@ -39,7 +39,7 @@ func TestRunAppSilentInstall(t *testing.T) {
 	errBuf := new(bytes.Buffer)
 	inBuf := new(bytes.Buffer)
 
-	err := RunApp([]string{"--silent", "--dir", tmpDir, "--no-path"}, inBuf, outBuf, errBuf)
+	err := RunApp([]string{"--silent", "--dir", tmpDir, "--no-path", "--node-action", "keep", "--confirm-delete"}, inBuf, outBuf, errBuf)
 	if err != nil {
 		t.Fatalf("silent install failed: %v", err)
 	}

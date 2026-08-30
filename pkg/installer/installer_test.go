@@ -427,7 +427,15 @@ func TestWebServerEndpoints(t *testing.T) {
 		t.Errorf("GET /api/verify returned %d", wVerify.Code)
 	}
 
-	// 10. POST /api/install with error
+	// 10. GET /api/detect-runtimes
+	reqDetect := httptest.NewRequest(http.MethodGet, "/api/detect-runtimes", nil)
+	wDetect := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(wDetect, reqDetect)
+	if wDetect.Code != http.StatusOK {
+		t.Errorf("GET /api/detect-runtimes returned %d", wDetect.Code)
+	}
+
+	// 11. POST /api/install with error
 	badInstallPayload := Options{InstallDir: getImpossibleDir(t)}
 	badBody, _ := json.Marshal(badInstallPayload)
 	reqBadInstall := httptest.NewRequest(http.MethodPost, "/api/install", bytes.NewReader(badBody))
@@ -438,14 +446,41 @@ func TestWebServerEndpoints(t *testing.T) {
 	}
 }
 
-func TestStartWebUIBackground(t *testing.T) {
-	oldOpener := BrowserOpener
-	defer func() { BrowserOpener = oldOpener }()
-	browserOpened := false
-	BrowserOpener = func(url string, goos string) error {
-		browserOpened = true
-		return nil
+func TestRunVisualCLIWithRuntimeChoices(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	// Choice 1: Move to UVM
+	outBuf := new(bytes.Buffer)
+	inBuf := bytes.NewBufferString("1\n")
+	opts := Options{InstallDir: filepath.Join(tmpHome, "bin1"), ModifyPath: false}
+	err := RunVisualCLI(opts, inBuf, outBuf, tmpHome, "linux")
+	if err != nil {
+		t.Fatalf("RunVisualCLI failed: %v", err)
 	}
+
+	// Choice 2: Delete with confirmation
+	outBuf.Reset()
+	inBuf = bytes.NewBufferString("2\ny\n")
+	opts2 := Options{InstallDir: filepath.Join(tmpHome, "bin2"), ModifyPath: false}
+	_ = RunVisualCLI(opts2, inBuf, outBuf, tmpHome, "linux")
+
+	// Choice 3: Keep
+	outBuf.Reset()
+	inBuf = bytes.NewBufferString("3\n")
+	opts3 := Options{InstallDir: filepath.Join(tmpHome, "bin3"), ModifyPath: false}
+	_ = RunVisualCLI(opts3, inBuf, outBuf, tmpHome, "linux")
+}
+
+func TestStartWebUIBackground(t *testing.T) {
+	openedChan := make(chan bool, 1)
+	SetBrowserOpener(func(url string, goos string) error {
+		select {
+		case openedChan <- true:
+		default:
+		}
+		return nil
+	})
+	defer SetBrowserOpener(defaultBrowserOpener)
 
 	tmpHome := t.TempDir()
 	opts := Options{Port: 0}
@@ -454,8 +489,10 @@ func TestStartWebUIBackground(t *testing.T) {
 		_ = StartWebUI(opts, tmpHome, "linux")
 	}()
 
-	time.Sleep(150 * time.Millisecond)
-	if !browserOpened {
-		t.Logf("mock browser opener called asynchronously")
+	select {
+	case <-openedChan:
+		// Browser opened successfully
+	case <-time.After(500 * time.Millisecond):
+		t.Logf("browser opener timed out in test")
 	}
 }

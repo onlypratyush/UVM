@@ -108,6 +108,16 @@ test_uninstall() {
     [ ! -f "${test_install_dir}/uvm" ]
 }
 
+# Test 6: Node Action Keep
+test_node_action_keep() {
+    local test_home="${TEMP_DIR}/home5"
+    mkdir -p "${test_home}"
+    local test_install_dir="${test_home}/.uvm/bin"
+
+    HOME="${test_home}" GOPATH="${GOPATH:-$HOME/go}" UVM_INSTALL_DIR="${test_install_dir}" "${INSTALLER}" --node-action keep > /dev/null
+    [ -x "${test_install_dir}/uvm" ] || return 1
+}
+
 echo "=================================================="
 echo "Running install.sh Test Suite"
 echo "=================================================="
@@ -116,6 +126,7 @@ run_test "Local Installation" test_local_install
 run_test "Idempotent Shell Config" test_idempotent_shell_config
 run_test "Skip PATH Modification" test_skip_path_modify
 run_test "Uninstallation" test_uninstall
+run_test "Node Action Keep" test_node_action_keep
 
 echo "=================================================="
 echo "Test Summary: ${PASSED_TESTS} passed, ${FAILED_TESTS} failed"
