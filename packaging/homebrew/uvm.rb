@@ -7,20 +7,20 @@ class Uvm < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/onlypratyush/UVM-/releases/download/v#{version}/uvm_v#{version}_darwin_arm64.tar.gz"
-      sha256 "d2af72e30b865718f7e03af6bf8987ec9cb0300df34aa0fae466d785a9c36938"
+      sha256 "da9f7d81642db63a53ebff6469ac910fc1191b9680271ab20d4f79dd11dec37e"
     else
       url "https://github.com/onlypratyush/UVM-/releases/download/v#{version}/uvm_v#{version}_darwin_amd64.tar.gz"
-      sha256 "805e4a3ade8dde336855eb2434df9c13109b237fdb3d2c04dee43f05a9bcede2"
+      sha256 "84939ddaf511ce1d2da728de7c45c8269da047da79b80c79798aeea6bc300a88"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
       url "https://github.com/onlypratyush/UVM-/releases/download/v#{version}/uvm_v#{version}_linux_arm64.tar.gz"
-      sha256 "52a37599bfd8ab5134a3234b9dc871619ca95002d771247b3835a2e6285dcf5b"
+      sha256 "5401b556a6b5c7b2657c2ebbe372841f13a217102cbd5a70add19ede240b558b"
     else
       url "https://github.com/onlypratyush/UVM-/releases/download/v#{version}/uvm_v#{version}_linux_amd64.tar.gz"
-      sha256 "6322286a57a296865d4874540033a3849cb5bfe7704256d54c86da7d2b88bcc2"
+      sha256 "3cf443150c893f5fc7ebbf7fd78e8981ab7c539804bf40d82fc6d17c53986848"
     end
   end
 
