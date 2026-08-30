@@ -24,7 +24,7 @@ irm https://raw.githubusercontent.com/onlypratyush/UVM-/main/install.ps1 | iex
 
 ### 🍺 Homebrew (macOS / Linux)
 ```bash
-brew tap onlypratyush/uvm
+brew tap onlypratyush/uvm https://github.com/onlypratyush/UVM-
 brew install uvm
 ```
 
