@@ -1,15 +1,15 @@
 {
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Universal Version Manager for programming language runtimes",
   "homepage": "https://github.com/onlypratyush/UVM-",
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/onlypratyush/UVM-/releases/download/v0.0.3/uvm_v0.0.3_windows_amd64.zip",
+      "url": "https://github.com/onlypratyush/UVM-/releases/download/v0.0.4/uvm_v0.0.4_windows_amd64.zip",
       "bin": "uvm.exe"
     },
     "arm64": {
-      "url": "https://github.com/onlypratyush/UVM-/releases/download/v0.0.3/uvm_v0.0.3_windows_arm64.zip",
+      "url": "https://github.com/onlypratyush/UVM-/releases/download/v0.0.4/uvm_v0.0.4_windows_arm64.zip",
       "bin": "uvm.exe"
     }
   },

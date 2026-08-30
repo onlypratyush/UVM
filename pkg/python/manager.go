@@ -1,4 +1,4 @@
-package node
+package python
 
 import (
 	"archive/tar"
@@ -15,38 +15,58 @@ import (
 	"strings"
 )
 
-// DefaultNodeDistURL is the official Node.js distribution mirror
-const DefaultNodeDistURL = "https://nodejs.org/dist"
+// DefaultPythonDistURL is the default standalone Python releases base URL
+const DefaultPythonDistURL = "https://github.com/astral-sh/python-build-standalone/releases/download"
 
-// NodeRelease is an entry in the Node.js dist/index.json file
-type NodeRelease struct {
-	Version string      `json:"version"`
-	LTS     interface{} `json:"lts"` // boolean false or string name like "Iron"
+// DefaultLatestReleaseMetadataURL is the raw metadata endpoint for latest-release
+const DefaultLatestReleaseMetadataURL = "https://raw.githubusercontent.com/astral-sh/python-build-standalone/latest-release/latest-release.json"
+
+// DefaultReleaseTag is the fallback release tag if online metadata resolution is unavailable
+const DefaultReleaseTag = "20250212"
+
+// KnownPythonReleases is the list of standard supported Python versions
+var KnownPythonReleases = []RemoteVersion{
+	{Version: "3.13.2", LTS: "Latest Stable"},
+	{Version: "3.12.9", LTS: "LTS"},
+	{Version: "3.11.11", LTS: "Security Support"},
+	{Version: "3.10.16", LTS: "Security Support"},
+	{Version: "3.9.21", LTS: "Security Support"},
+	{Version: "3.8.20", LTS: "EOL"},
 }
 
-// RemoteVersion represents a remote Node.js release available for installation
+// PythonReleaseMetadata holds metadata returned by latest-release.json
+type PythonReleaseMetadata struct {
+	Version        int    `json:"version"`
+	Tag            string `json:"tag"`
+	ReleaseURL     string `json:"release_url"`
+	AssetURLPrefix string `json:"asset_url_prefix"`
+}
+
+// RemoteVersion represents a remote Python release available for installation
 type RemoteVersion struct {
 	Version string `json:"version"`
 	LTS     string `json:"lts,omitempty"`
 }
 
-// InstalledVersion represents a locally installed Node.js version
+// InstalledVersion represents a locally installed Python version
 type InstalledVersion struct {
 	Version  string `json:"version"`
 	IsActive bool   `json:"isActive"`
 	Path     string `json:"path"`
 }
 
-// Manager handles installation, switching, and deletion of Node.js runtimes
+// Manager handles installation, switching, and deletion of Python runtimes
 type Manager struct {
-	BaseDir     string
-	NodeDistURL string
-	HTTPClient  *http.Client
-	GOOS        string
-	GOARCH      string
+	BaseDir       string
+	PythonDistURL string
+	MetadataURL   string
+	DefaultTag    string
+	HTTPClient    *http.Client
+	GOOS          string
+	GOARCH        string
 }
 
-// NewManager creates a Node manager rooted at baseDir (e.g., ~/.uvm)
+// NewManager creates a Python manager rooted at baseDir (e.g., ~/.uvm)
 func NewManager(baseDir string) *Manager {
 	if baseDir == "" {
 		home, err := os.UserHomeDir()
@@ -60,96 +80,53 @@ func NewManager(baseDir string) *Manager {
 	}
 
 	return &Manager{
-		BaseDir:     baseDir,
-		NodeDistURL: DefaultNodeDistURL,
-		HTTPClient:  http.DefaultClient,
-		GOOS:        runtime.GOOS,
-		GOARCH:      runtime.GOARCH,
+		BaseDir:       baseDir,
+		PythonDistURL: DefaultPythonDistURL,
+		MetadataURL:   DefaultLatestReleaseMetadataURL,
+		DefaultTag:    DefaultReleaseTag,
+		HTTPClient:    http.DefaultClient,
+		GOOS:          runtime.GOOS,
+		GOARCH:        runtime.GOARCH,
 	}
 }
 
-// VersionsDir returns the folder where all Node versions are stored
+// VersionsDir returns the folder where all Python versions are stored
 func (m *Manager) VersionsDir() string {
-	return filepath.Join(m.BaseDir, "versions", "node")
+	return filepath.Join(m.BaseDir, "versions", "python")
 }
 
 // CurrentDir returns the folder for the active runtime symlink
 func (m *Manager) CurrentDir() string {
-	return filepath.Join(m.BaseDir, "current", "node")
+	return filepath.Join(m.BaseDir, "current", "python")
 }
 
-// BinDir returns the active binary directory where node, npm, npx shims live
+// BinDir returns the active binary directory where python, pip shims live
 func (m *Manager) BinDir() string {
 	return filepath.Join(m.BaseDir, "bin")
 }
 
-// NormalizeVersion cleans and ensures standard version format (e.g. 20.11.0 -> v20.11.0)
+// NormalizeVersion cleans version string (e.g. v3.12.2 -> 3.12.2, python3.11 -> 3.11)
 func (m *Manager) NormalizeVersion(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return ""
 	}
-	if !strings.HasPrefix(v, "v") && v != "latest" && v != "current" && v != "lts" {
-		return "v" + v
-	}
-	return v
+	v = strings.TrimPrefix(v, "python")
+	v = strings.TrimPrefix(v, "py")
+	v = strings.TrimPrefix(v, "v")
+	return strings.TrimSpace(v)
 }
 
-// FetchRemoteReleases queries the remote Node.js release index
-func (m *Manager) FetchRemoteReleases() ([]NodeRelease, error) {
-	reqURL := fmt.Sprintf("%s/index.json", strings.TrimSuffix(m.NodeDistURL, "/"))
-	resp, err := m.HTTPClient.Get(reqURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch Node.js version index from %s: %w", reqURL, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch Node.js versions (HTTP %d)", resp.StatusCode)
-	}
-
-	var releases []NodeRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		return nil, fmt.Errorf("failed to parse Node.js version index: %w", err)
-	}
-
-	if len(releases) == 0 {
-		return nil, fmt.Errorf("no Node.js releases found")
-	}
-
-	return releases, nil
-}
-
-// ListRemote returns available remote Node.js releases with LTS indicators
+// ListRemote returns available remote Python releases
 func (m *Manager) ListRemote(limit int) ([]RemoteVersion, error) {
-	releases, err := m.FetchRemoteReleases()
-	if err != nil {
-		return nil, err
-	}
-
-	var list []RemoteVersion
-	for _, r := range releases {
-		ltsName := ""
-		switch lts := r.LTS.(type) {
-		case string:
-			ltsName = lts
-		case bool:
-			if lts {
-				ltsName = "LTS"
-			}
-		}
-		list = append(list, RemoteVersion{
-			Version: r.Version,
-			LTS:     ltsName,
-		})
-		if limit > 0 && len(list) >= limit {
-			break
-		}
+	list := KnownPythonReleases
+	if limit > 0 && len(list) > limit {
+		list = list[:limit]
 	}
 	return list, nil
 }
 
-// ResolveInstalledVersion finds the best locally installed version matching input (exact or partial prefix e.g. "24")
+// ResolveInstalledVersion finds the best locally installed version matching input (exact or partial prefix e.g. "3.12")
 func (m *Manager) ResolveInstalledVersion(versionInput string) (string, error) {
 	norm := m.NormalizeVersion(versionInput)
 	if norm == "" {
@@ -161,14 +138,14 @@ func (m *Manager) ResolveInstalledVersion(versionInput string) (string, error) {
 		return norm, nil
 	}
 
-	// 1. Exact match check
+	// 1. Exact match
 	for _, v := range installed {
 		if v.Version == norm {
 			return v.Version, nil
 		}
 	}
 
-	// 2. Prefix / partial match (e.g. "24" or "v24" matching "v24.20.0")
+	// 2. Prefix match (e.g. "3.12" matching "3.12.2")
 	prefix := norm
 	if !strings.HasSuffix(prefix, ".") {
 		prefix = prefix + "."
@@ -191,54 +168,32 @@ func (m *Manager) ResolveInstalledVersion(versionInput string) (string, error) {
 	return norm, nil
 }
 
-// ResolveRemoteVersion resolves alias keywords or partial prefixes (e.g. "24", "lts", "latest") to concrete versions
+// ResolveRemoteVersion resolves alias keywords or partial prefixes (e.g. "3.12", "latest") into concrete semantic versions
 func (m *Manager) ResolveRemoteVersion(versionInput string) (string, error) {
 	norm := m.NormalizeVersion(versionInput)
 	if norm == "" {
 		return "", fmt.Errorf("version cannot be empty")
 	}
 
-	// If already a full semver (e.g. v20.11.0 with 2 dots), return directly unless latest/lts
-	if norm != "latest" && norm != "current" && norm != "lts" && strings.Count(norm, ".") >= 2 {
-		return norm, nil
-	}
-
-	releases, err := m.FetchRemoteReleases()
-	if err != nil {
-		if norm == "latest" || norm == "current" || norm == "lts" {
-			return "", err
-		}
-		// Fallback to normalized input if network fails
-		return norm, nil
-	}
-
 	if norm == "latest" || norm == "current" {
-		return releases[0].Version, nil
+		return "3.13.2", nil
 	}
-
 	if norm == "lts" {
-		for _, rel := range releases {
-			switch lts := rel.LTS.(type) {
-			case bool:
-				if lts {
-					return rel.Version, nil
-				}
-			case string:
-				if lts != "" {
-					return rel.Version, nil
-				}
-			}
-		}
-		return releases[0].Version, nil
+		return "3.12.9", nil
 	}
 
-	// Partial version matching (e.g. "v24" -> "v24.20.0" or "v20.11" -> "v20.11.1")
+	// If already a full version (e.g. 3.12.2 with 2 dots), return directly
+	if strings.Count(norm, ".") >= 2 {
+		return norm, nil
+	}
+
+	// Prefix matching against known releases (e.g. "3.12" -> "3.12.9", "3.11" -> "3.11.11")
 	prefix := norm
 	if !strings.HasSuffix(prefix, ".") {
 		prefix = prefix + "."
 	}
 
-	for _, rel := range releases {
+	for _, rel := range KnownPythonReleases {
 		if strings.HasPrefix(rel.Version, prefix) || rel.Version == norm {
 			return rel.Version, nil
 		}
@@ -247,46 +202,73 @@ func (m *Manager) ResolveRemoteVersion(versionInput string) (string, error) {
 	return norm, nil
 }
 
-// ResolveVersion resolves a version string using remote index if necessary
+// ResolveVersion resolves alias keywords into concrete versions
 func (m *Manager) ResolveVersion(versionInput string) (string, error) {
 	return m.ResolveRemoteVersion(versionInput)
 }
 
+// FetchLatestReleaseTag retrieves the active tag from latest-release metadata or falls back to DefaultTag
+func (m *Manager) FetchLatestReleaseTag() string {
+	if m.MetadataURL == "" {
+		return m.DefaultTag
+	}
+
+	resp, err := m.HTTPClient.Get(m.MetadataURL)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+		return m.DefaultTag
+	}
+	defer resp.Body.Close()
+
+	var meta PythonReleaseMetadata
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err == nil && meta.Tag != "" {
+		return meta.Tag
+	}
+
+	return m.DefaultTag
+}
+
 // GetArchiveTarget determines filename and archive type based on OS/Arch
-func (m *Manager) GetArchiveTarget(version string) (fileName string, isZip bool, err error) {
-	var osName, archName string
+func (m *Manager) GetArchiveTarget(version string, tag string) (fileName string, isZip bool, err error) {
+	if tag == "" {
+		tag = m.DefaultTag
+	}
+
+	var archStr, platformStr string
 
 	switch m.GOOS {
 	case "darwin":
-		osName = "darwin"
+		platformStr = "apple-darwin"
 		if m.GOARCH == "arm64" {
-			archName = "arm64"
+			archStr = "aarch64"
 		} else {
-			archName = "x64"
+			archStr = "x86_64"
 		}
-		fileName = fmt.Sprintf("node-%s-%s-%s.tar.gz", version, osName, archName)
+		fileName = fmt.Sprintf("cpython-%s+%s-%s-%s-install_only.tar.gz", version, tag, archStr, platformStr)
 		return fileName, false, nil
 
 	case "windows":
-		osName = "win"
+		platformStr = "pc-windows-msvc-shared"
 		if m.GOARCH == "arm64" {
-			archName = "arm64"
+			archStr = "aarch64"
 		} else {
-			archName = "x64"
+			archStr = "x86_64"
 		}
-		fileName = fmt.Sprintf("node-%s-%s-%s.zip", version, osName, archName)
-		return fileName, true, nil
+		fileName = fmt.Sprintf("cpython-%s+%s-%s-%s-install_only.tar.gz", version, tag, archStr, platformStr)
+		return fileName, false, nil
 
 	case "linux":
-		osName = "linux"
+		platformStr = "unknown-linux-gnu"
 		if m.GOARCH == "arm64" {
-			archName = "arm64"
+			archStr = "aarch64"
 		} else if m.GOARCH == "arm" {
-			archName = "armv7l"
+			archStr = "armv7"
 		} else {
-			archName = "x64"
+			archStr = "x86_64"
 		}
-		fileName = fmt.Sprintf("node-%s-%s-%s.tar.gz", version, osName, archName)
+		fileName = fmt.Sprintf("cpython-%s+%s-%s-%s-install_only.tar.gz", version, tag, archStr, platformStr)
 		return fileName, false, nil
 
 	default:
@@ -294,7 +276,7 @@ func (m *Manager) GetArchiveTarget(version string) (fileName string, isZip bool,
 	}
 }
 
-// Install downloads and extracts a Node.js version
+// Install downloads and extracts a Python version
 func (m *Manager) Install(versionInput string, out io.Writer) error {
 	version, err := m.ResolveRemoteVersion(versionInput)
 	if err != nil {
@@ -303,26 +285,27 @@ func (m *Manager) Install(versionInput string, out io.Writer) error {
 
 	destDir := filepath.Join(m.VersionsDir(), version)
 	if _, err := os.Stat(destDir); err == nil {
-		fmt.Fprintf(out, "Node.js %s is already installed at %s\n", version, destDir)
+		fmt.Fprintf(out, "Python %s is already installed at %s\n", version, destDir)
 		return m.Use(version, out)
 	}
 
-	fileName, isZip, err := m.GetArchiveTarget(version)
+	tag := m.FetchLatestReleaseTag()
+	fileName, isZip, err := m.GetArchiveTarget(version, tag)
 	if err != nil {
 		return err
 	}
 
-	downloadURL := fmt.Sprintf("%s/%s/%s", strings.TrimSuffix(m.NodeDistURL, "/"), version, fileName)
-	fmt.Fprintf(out, "Downloading Node.js %s from %s...\n", version, downloadURL)
+	downloadURL := fmt.Sprintf("%s/%s/%s", strings.TrimSuffix(m.PythonDistURL, "/"), tag, fileName)
+	fmt.Fprintf(out, "Downloading Python %s from %s...\n", version, downloadURL)
 
 	resp, err := m.HTTPClient.Get(downloadURL)
 	if err != nil {
-		return fmt.Errorf("failed to download Node.js archive: %w", err)
+		return fmt.Errorf("failed to download Python archive: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download Node.js %s (HTTP %d from %s)", version, resp.StatusCode, downloadURL)
+		return fmt.Errorf("failed to download Python %s (HTTP %d from %s)", version, resp.StatusCode, downloadURL)
 	}
 
 	if err := os.MkdirAll(destDir, 0755); err != nil {
@@ -332,8 +315,7 @@ func (m *Manager) Install(versionInput string, out io.Writer) error {
 	fmt.Fprintf(out, "Extracting %s...\n", fileName)
 
 	if isZip {
-		// Save to temporary file for zip decompression
-		tmpZip, err := os.CreateTemp("", "node-*.zip")
+		tmpZip, err := os.CreateTemp("", "python-*.zip")
 		if err != nil {
 			return err
 		}
@@ -356,11 +338,11 @@ func (m *Manager) Install(versionInput string, out io.Writer) error {
 		}
 	}
 
-	fmt.Fprintf(out, "✓ Node.js %s installed successfully to %s\n", version, destDir)
+	fmt.Fprintf(out, "✓ Python %s installed successfully to %s\n", version, destDir)
 	return m.Use(version, out)
 }
 
-// Use switches the active Node.js version (supporting partial prefixes e.g. "24")
+// Use switches the active Python version (supporting partial prefixes e.g. "3.12")
 func (m *Manager) Use(versionInput string, out io.Writer) error {
 	version, err := m.ResolveInstalledVersion(versionInput)
 	if err != nil {
@@ -369,7 +351,7 @@ func (m *Manager) Use(versionInput string, out io.Writer) error {
 
 	sourceDir := filepath.Join(m.VersionsDir(), version)
 	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-		return fmt.Errorf("Node.js %s is not installed. Run 'uvm install node %s' first", version, version)
+		return fmt.Errorf("Python %s is not installed. Run 'uvm install python %s' first", version, version)
 	}
 
 	if err := os.MkdirAll(m.BinDir(), 0755); err != nil {
@@ -386,76 +368,104 @@ func (m *Manager) Use(versionInput string, out io.Writer) error {
 	_ = os.Symlink(sourceDir, m.CurrentDir())
 
 	// Write active version state file
-	versionStateFile := filepath.Join(currentParent, "node.version")
+	versionStateFile := filepath.Join(currentParent, "python.version")
 	if err := os.WriteFile(versionStateFile, []byte(version), 0644); err != nil {
 		return err
 	}
 
 	// Create / Update active shims in bin/
 	if m.GOOS == "windows" {
-		srcNodeExe := filepath.Join(sourceDir, "node.exe")
-		if _, err := os.Stat(srcNodeExe); os.IsNotExist(err) {
-			if _, err := os.Stat(filepath.Join(sourceDir, "bin", "node.exe")); err == nil {
-				srcNodeExe = filepath.Join(sourceDir, "bin", "node.exe")
-			} else if _, err := os.Stat(filepath.Join(sourceDir, "bin", "node")); err == nil {
-				srcNodeExe = filepath.Join(sourceDir, "bin", "node")
-			}
+		// Standalone Python on Windows puts python.exe directly in root or bin/
+		srcPythonExe := filepath.Join(sourceDir, "python.exe")
+		if _, err := os.Stat(srcPythonExe); os.IsNotExist(err) {
+			srcPythonExe = filepath.Join(sourceDir, "bin", "python.exe")
 		}
 
-		dstNodeExe := filepath.Join(m.BinDir(), "node.exe")
-		if _, err := os.Stat(srcNodeExe); err == nil {
-			_ = os.Remove(dstNodeExe)
-			_ = copyFile(srcNodeExe, dstNodeExe)
+		srcPipExe := filepath.Join(sourceDir, "Scripts", "pip.exe")
+		if _, err := os.Stat(srcPipExe); os.IsNotExist(err) {
+			srcPipExe = filepath.Join(sourceDir, "bin", "pip.exe")
+		}
+
+		dstPythonExe := filepath.Join(m.BinDir(), "python.exe")
+		dstPython3Exe := filepath.Join(m.BinDir(), "python3.exe")
+		if _, err := os.Stat(srcPythonExe); err == nil {
+			_ = os.Remove(dstPythonExe)
+			_ = copyFile(srcPythonExe, dstPythonExe)
+			_ = os.Remove(dstPython3Exe)
+			_ = copyFile(srcPythonExe, dstPython3Exe)
 		} else {
-			_ = os.WriteFile(dstNodeExe, []byte("node"), 0755)
+			_ = os.WriteFile(dstPythonExe, []byte("python"), 0755)
+			_ = os.WriteFile(dstPython3Exe, []byte("python3"), 0755)
 		}
 
-		cmdBinaries := []string{"node.cmd", "npm.cmd", "npx.cmd", "corepack.cmd"}
+		dstPipExe := filepath.Join(m.BinDir(), "pip.exe")
+		dstPip3Exe := filepath.Join(m.BinDir(), "pip3.exe")
+		if _, err := os.Stat(srcPipExe); err == nil {
+			_ = os.Remove(dstPipExe)
+			_ = copyFile(srcPipExe, dstPipExe)
+			_ = os.Remove(dstPip3Exe)
+			_ = copyFile(srcPipExe, dstPip3Exe)
+		} else {
+			_ = os.WriteFile(dstPipExe, []byte("pip"), 0755)
+			_ = os.WriteFile(dstPip3Exe, []byte("pip3"), 0755)
+		}
+
+		cmdBinaries := []string{"python.cmd", "python3.cmd", "pip.cmd", "pip3.cmd"}
 		for _, b := range cmdBinaries {
 			shimPath := filepath.Join(m.BinDir(), b)
-			targetExe := filepath.Join(sourceDir, b)
-			if b == "node.cmd" {
-				targetExe = srcNodeExe
+			targetExe := srcPythonExe
+			if strings.HasPrefix(b, "pip") {
+				targetExe = srcPipExe
 			}
 			content := fmt.Sprintf("@ECHO off\r\n\"%s\" %%*\r\n", targetExe)
 			_ = os.WriteFile(shimPath, []byte(content), 0755)
 		}
 	} else {
-		binaries := []string{"node", "npm", "npx", "corepack"}
-		for _, b := range binaries {
+		// Unix: link python, python3, pip, pip3
+		binNames := []string{"python", "python3", "pip", "pip3"}
+		for _, b := range binNames {
 			shimPath := filepath.Join(m.BinDir(), b)
 			targetExe := filepath.Join(sourceDir, "bin", b)
+
+			// If specific binary doesn't exist, check alternatives (e.g. python3 -> python)
+			if _, err := os.Stat(targetExe); os.IsNotExist(err) {
+				if b == "python" {
+					targetExe = filepath.Join(sourceDir, "bin", "python3")
+				} else if b == "pip" {
+					targetExe = filepath.Join(sourceDir, "bin", "pip3")
+				}
+			}
+
 			_ = os.Remove(shimPath)
 			_ = os.Symlink(targetExe, shimPath)
 		}
 	}
 
-	fmt.Fprintf(out, "Now using Node.js %s\n", version)
+	fmt.Fprintf(out, "Now using Python %s\n", version)
 
-	// Check if ~/.uvm/bin is in PATH
 	pathEnv := os.Getenv("PATH")
 	if !strings.Contains(pathEnv, m.BinDir()) {
 		fmt.Fprintf(out, "\nℹ Note: %s is not in your current PATH.\n", m.BinDir())
 		if m.GOOS == "windows" {
-			fmt.Fprintf(out, "To use node immediately in this terminal, run:\n  $env:Path = \"%s;\" + $env:Path\n", m.BinDir())
+			fmt.Fprintf(out, "To use python immediately in this terminal, run:\n  $env:Path = \"%s;\" + $env:Path\n", m.BinDir())
 		} else {
-			fmt.Fprintf(out, "To use node immediately in this terminal, run:\n  export PATH=\"%s:$PATH\"\n", m.BinDir())
+			fmt.Fprintf(out, "To use python immediately in this terminal, run:\n  export PATH=\"%s:$PATH\"\n", m.BinDir())
 		}
 	}
 	return nil
 }
 
-// Current returns the currently active Node.js version
+// Current returns the currently active Python version
 func (m *Manager) Current() (string, error) {
-	versionStateFile := filepath.Join(filepath.Dir(m.CurrentDir()), "node.version")
+	versionStateFile := filepath.Join(filepath.Dir(m.CurrentDir()), "python.version")
 	data, err := os.ReadFile(versionStateFile)
 	if err != nil {
-		return "", fmt.Errorf("no active Node.js version selected (run 'uvm use node <version>')")
+		return "", fmt.Errorf("no active Python version selected (run 'uvm use python <version>')")
 	}
 	return strings.TrimSpace(string(data)), nil
 }
 
-// ListInstalled returns all locally installed Node.js versions
+// ListInstalled returns all locally installed Python versions
 func (m *Manager) ListInstalled() ([]InstalledVersion, error) {
 	vDir := m.VersionsDir()
 	if _, err := os.Stat(vDir); os.IsNotExist(err) {
@@ -484,7 +494,7 @@ func (m *Manager) ListInstalled() ([]InstalledVersion, error) {
 	return list, nil
 }
 
-// Remove uninstalls a Node.js version (supporting partial prefixes e.g. "24")
+// Remove uninstalls a Python version (supporting partial prefixes e.g. "3.12")
 func (m *Manager) Remove(versionInput string, out io.Writer) error {
 	version, err := m.ResolveInstalledVersion(versionInput)
 	if err != nil {
@@ -493,36 +503,40 @@ func (m *Manager) Remove(versionInput string, out io.Writer) error {
 
 	destDir := filepath.Join(m.VersionsDir(), version)
 	if _, err := os.Stat(destDir); os.IsNotExist(err) {
-		return fmt.Errorf("Node.js %s is not installed", version)
+		return fmt.Errorf("Python %s is not installed", version)
 	}
 
 	// If removing active version, remove active state and shims
 	active, _ := m.Current()
 	if active == version {
-		_ = os.Remove(filepath.Join(filepath.Dir(m.CurrentDir()), "node.version"))
+		_ = os.Remove(filepath.Join(filepath.Dir(m.CurrentDir()), "python.version"))
 		_ = os.Remove(m.CurrentDir())
 		if m.GOOS == "windows" {
-			_ = os.Remove(filepath.Join(m.BinDir(), "node.exe"))
-			_ = os.Remove(filepath.Join(m.BinDir(), "npm.cmd"))
-			_ = os.Remove(filepath.Join(m.BinDir(), "npx.cmd"))
-			_ = os.Remove(filepath.Join(m.BinDir(), "corepack.cmd"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "python.exe"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "python3.exe"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "pip.exe"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "pip3.exe"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "python.cmd"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "python3.cmd"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "pip.cmd"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "pip3.cmd"))
 		} else {
-			_ = os.Remove(filepath.Join(m.BinDir(), "node"))
-			_ = os.Remove(filepath.Join(m.BinDir(), "npm"))
-			_ = os.Remove(filepath.Join(m.BinDir(), "npx"))
-			_ = os.Remove(filepath.Join(m.BinDir(), "corepack"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "python"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "python3"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "pip"))
+			_ = os.Remove(filepath.Join(m.BinDir(), "pip3"))
 		}
 	}
 
 	if err := os.RemoveAll(destDir); err != nil {
-		return fmt.Errorf("failed to remove Node.js %s: %w", version, err)
+		return fmt.Errorf("failed to remove Python %s: %w", version, err)
 	}
 
-	fmt.Fprintf(out, "✓ Node.js %s removed successfully\n", version)
+	fmt.Fprintf(out, "✓ Python %s removed successfully\n", version)
 	return nil
 }
 
-// extractTarGz unpacks a .tar.gz archive, stripping the top-level directory prefix
+// extractTarGz unpacks a .tar.gz archive, stripping the top-level directory prefix (e.g. python/bin/python3 -> bin/python3)
 func extractTarGz(r io.Reader, destDir string) error {
 	gzr, err := gzip.NewReader(r)
 	if err != nil {
@@ -627,7 +641,7 @@ func extractZip(zipPath, destDir string) error {
 	return nil
 }
 
-// stripTopDir strips the first directory element in a path (e.g. node-v20/bin/node -> bin/node)
+// stripTopDir strips the first directory element in a path (e.g. python/bin/python -> bin/python)
 func stripTopDir(p string) string {
 	clean := filepath.ToSlash(p)
 	parts := strings.Split(clean, "/")

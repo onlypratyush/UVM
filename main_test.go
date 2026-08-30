@@ -62,6 +62,14 @@ func TestInstallCmd(t *testing.T) {
 	nodeDir := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0")
 	_ = os.MkdirAll(nodeDir, 0755)
 
+	// Mock already installed go version
+	goDir := filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.0")
+	_ = os.MkdirAll(goDir, 0755)
+
+	// Mock already installed python version
+	pyDir := filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2")
+	_ = os.MkdirAll(pyDir, 0755)
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -81,16 +89,39 @@ func TestInstallCmd(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "install go 1.22.0",
+			name:        "install already installed go",
 			args:        []string{"install", "go", "1.22.0"},
-			expectedOut: "Installing go version 1.22.0...\n",
+			expectedOut: "Go go1.22.0 is already installed",
 			expectError: false,
 		},
 		{
-			name:        "install python 3.12.2",
-			args:        []string{"install", "python", "3.12.2"},
-			expectedOut: "Installing python version 3.12.2...\n",
+			name:        "install golang alias",
+			args:        []string{"install", "golang", "1.22.0"},
+			expectedOut: "Go go1.22.0 is already installed",
 			expectError: false,
+		},
+		{
+			name:        "install already installed python",
+			args:        []string{"install", "python", "3.12.2"},
+			expectedOut: "Python 3.12.2 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install py alias",
+			args:        []string{"install", "py", "3.12.2"},
+			expectedOut: "Python 3.12.2 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install python3 alias",
+			args:        []string{"install", "python3", "3.12.2"},
+			expectedOut: "Python 3.12.2 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install unsupported runtime",
+			args:        []string{"install", "rust", "1.75.0"},
+			expectError: true,
 		},
 		{
 			name:        "install missing args",
@@ -141,6 +172,14 @@ func TestUseCmd(t *testing.T) {
 	nodeDir := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0", "bin")
 	_ = os.MkdirAll(nodeDir, 0755)
 
+	// Create mock go version
+	goDir := filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.0", "bin")
+	_ = os.MkdirAll(goDir, 0755)
+
+	// Create mock python version
+	pyDir := filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2", "bin")
+	_ = os.MkdirAll(pyDir, 0755)
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -165,10 +204,49 @@ func TestUseCmd(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "use go 1.22.0",
+			name:        "use go installed",
 			args:        []string{"use", "go", "1.22.0"},
-			expectedOut: "Using go version 1.22.0\n",
+			expectedOut: "Now using Go go1.22.0\n",
 			expectError: false,
+		},
+		{
+			name:        "use golang alias",
+			args:        []string{"use", "golang", "1.22.0"},
+			expectedOut: "Now using Go go1.22.0\n",
+			expectError: false,
+		},
+		{
+			name:        "use go uninstalled",
+			args:        []string{"use", "go", "1.18.0"},
+			expectError: true,
+		},
+		{
+			name:        "use python installed",
+			args:        []string{"use", "python", "3.12.2"},
+			expectedOut: "Now using Python 3.12.2\n",
+			expectError: false,
+		},
+		{
+			name:        "use py alias",
+			args:        []string{"use", "py", "3.12.2"},
+			expectedOut: "Now using Python 3.12.2\n",
+			expectError: false,
+		},
+		{
+			name:        "use python3 alias",
+			args:        []string{"use", "python3", "3.12.2"},
+			expectedOut: "Now using Python 3.12.2\n",
+			expectError: false,
+		},
+		{
+			name:        "use python uninstalled",
+			args:        []string{"use", "python", "3.9.0"},
+			expectError: true,
+		},
+		{
+			name:        "use unsupported runtime",
+			args:        []string{"use", "ruby", "3.2.0"},
+			expectError: true,
 		},
 		{
 			name:        "use missing args",
@@ -213,48 +291,71 @@ func TestListCmd(t *testing.T) {
 	outBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
 
-	// List when no node versions are installed
+	// List when no runtimes are installed
 	_ = Execute([]string{"list"}, outBuf, errBuf)
-	if !strings.Contains(outBuf.String(), "No Node.js versions installed") {
+	if !strings.Contains(outBuf.String(), "No runtime versions installed") {
 		t.Errorf("unexpected output when empty: %s", outBuf.String())
 	}
 
+	// Empty list for individual runtimes
 	outBuf.Reset()
 	_ = Execute([]string{"list", "node"}, outBuf, errBuf)
 	if !strings.Contains(outBuf.String(), "No installed Node.js versions found") {
 		t.Errorf("unexpected output for empty list node: %s", outBuf.String())
 	}
 
-	// Create multiple installed versions (one active, one inactive)
-	vDir1 := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0")
-	vDir2 := filepath.Join(tmpHome, ".uvm", "versions", "node", "v18.20.0")
-	_ = os.MkdirAll(vDir1, 0755)
-	_ = os.MkdirAll(vDir2, 0755)
+	outBuf.Reset()
+	_ = Execute([]string{"list", "go"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "No installed Go versions found") {
+		t.Errorf("unexpected output for empty list go: %s", outBuf.String())
+	}
 
-	// Set v20.11.0 active
+	outBuf.Reset()
+	_ = Execute([]string{"list", "python"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "No installed Python versions found") {
+		t.Errorf("unexpected output for empty list python: %s", outBuf.String())
+	}
+
+	// Create installed versions for all runtimes
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.0"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2"), 0755)
+
+	// Activate versions
 	currentParent := filepath.Join(tmpHome, ".uvm", "current")
 	_ = os.MkdirAll(currentParent, 0755)
 	_ = os.WriteFile(filepath.Join(currentParent, "node.version"), []byte("v20.11.0"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "go.version"), []byte("go1.22.0"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "python.version"), []byte("3.12.2"), 0644)
 
-	outBuf.Reset()
-	_ = Execute([]string{"ls", "nodejs"}, outBuf, errBuf)
-	out := outBuf.String()
-	if !strings.Contains(out, "* v20.11.0 (active)") || !strings.Contains(out, "v18.20.0") {
-		t.Errorf("expected active and inactive node versions list, got: %s", out)
-	}
-
-	// List all when installed
+	// List all
 	outBuf.Reset()
 	_ = Execute([]string{"list"}, outBuf, errBuf)
-	if !strings.Contains(outBuf.String(), "Installed Node.js versions") {
-		t.Errorf("expected node list in list all, got: %s", outBuf.String())
+	out := outBuf.String()
+	if !strings.Contains(out, "Installed Node.js versions:") ||
+		!strings.Contains(out, "Installed Go versions:") ||
+		!strings.Contains(out, "Installed Python versions:") {
+		t.Errorf("expected all 3 runtimes in list all output, got: %s", out)
 	}
 
-	// Other runtimes
+	// List specific runtimes
 	outBuf.Reset()
-	_ = Execute([]string{"list", "go"}, outBuf, errBuf)
-	if !strings.Contains(outBuf.String(), "Listing installed versions for go") {
+	_ = Execute([]string{"ls", "golang"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "* go1.22.0 (active)") {
 		t.Errorf("unexpected go list output: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	_ = Execute([]string{"ls", "py"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "* 3.12.2 (active)") {
+		t.Errorf("unexpected py list output: %s", outBuf.String())
+	}
+
+	// Unsupported runtime
+	outBuf.Reset()
+	err := Execute([]string{"list", "invalid_rt"}, outBuf, errBuf)
+	if err == nil {
+		t.Errorf("expected error for unsupported runtime list")
 	}
 }
 
@@ -269,8 +370,9 @@ func TestRemoveCmd(t *testing.T) {
 	os.Setenv("HOME", tmpHome)
 	os.Setenv("USERPROFILE", tmpHome)
 
-	vDir := filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0")
-	_ = os.MkdirAll(vDir, 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.0"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2"), 0755)
 
 	outBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
@@ -278,14 +380,28 @@ func TestRemoveCmd(t *testing.T) {
 	// Remove node version
 	err := Execute([]string{"remove", "node", "20.11.0"}, outBuf, errBuf)
 	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
-		t.Fatalf("remove failed: %v, out: %s", err, outBuf.String())
+		t.Fatalf("remove node failed: %v, out: %s", err, outBuf.String())
 	}
 
-	// Remove non-node runtime
+	// Remove go version
 	outBuf.Reset()
 	err = Execute([]string{"rm", "go", "1.22.0"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "Removing go version 1.22.0") {
-		t.Errorf("unexpected rm go output: %s", outBuf.String())
+	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
+		t.Fatalf("remove go failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove python version
+	outBuf.Reset()
+	err = Execute([]string{"uninstall", "python", "3.12.2"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
+		t.Fatalf("remove python failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove unsupported runtime
+	outBuf.Reset()
+	err = Execute([]string{"rm", "invalid_rt", "1.0.0"}, outBuf, errBuf)
+	if err == nil {
+		t.Errorf("expected error removing unsupported runtime")
 	}
 }
 
@@ -305,25 +421,55 @@ func TestCurrentCmd(t *testing.T) {
 
 	// Current when none is active
 	err := Execute([]string{"current"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "No active Node.js version") {
-		t.Errorf("expected no active version message, got: %s", outBuf.String())
+	if err != nil || !strings.Contains(outBuf.String(), "No active runtime versions set") {
+		t.Errorf("expected no active runtime versions message, got: %s", outBuf.String())
 	}
 
-	// Set active version
+	// Set active versions
 	currentParent := filepath.Join(tmpHome, ".uvm", "current")
 	_ = os.MkdirAll(currentParent, 0755)
 	_ = os.WriteFile(filepath.Join(currentParent, "node.version"), []byte("v20.11.0"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "go.version"), []byte("go1.22.0"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "python.version"), []byte("3.12.2"), 0644)
+
+	outBuf.Reset()
+	err = Execute([]string{"current"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Node.js: v20.11.0") ||
+		!strings.Contains(outBuf.String(), "Go:      go1.22.0") ||
+		!strings.Contains(outBuf.String(), "Python:  3.12.2") {
+		t.Errorf("expected all 3 runtimes in current output, got: %s", outBuf.String())
+	}
 
 	outBuf.Reset()
 	err = Execute([]string{"current", "node"}, outBuf, errBuf)
 	if err != nil || !strings.Contains(outBuf.String(), "v20.11.0") {
-		t.Errorf("expected current version v20.11.0, got: %s", outBuf.String())
+		t.Errorf("expected current node version, got: %s", outBuf.String())
 	}
 
 	outBuf.Reset()
 	err = Execute([]string{"current", "go"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "none") {
-		t.Errorf("expected none for go, got: %s", outBuf.String())
+	if err != nil || !strings.Contains(outBuf.String(), "go1.22.0") {
+		t.Errorf("expected current go version, got: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"current", "python"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "3.12.2") {
+		t.Errorf("expected current python version, got: %s", outBuf.String())
+	}
+
+	// Inactive individual runtime
+	_ = os.Remove(filepath.Join(currentParent, "go.version"))
+	outBuf.Reset()
+	err = Execute([]string{"current", "go"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "No active Go version set") {
+		t.Errorf("expected no active go version, got: %s", outBuf.String())
+	}
+
+	// Unsupported runtime
+	err = Execute([]string{"current", "unsupported_rt"}, outBuf, errBuf)
+	if err == nil {
+		t.Errorf("expected error for unsupported runtime current")
 	}
 }
 
@@ -338,7 +484,17 @@ func TestRunFunction(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
 
-	os.Args = []string{"uvm", "list", "go"}
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	os.Args = []string{"uvm", "--version"}
 	if err := run(); err != nil {
 		t.Fatalf("run() returned error: %v", err)
 	}
@@ -346,7 +502,7 @@ func TestRunFunction(t *testing.T) {
 
 func TestMainExecutionSuccess(t *testing.T) {
 	if os.Getenv("BE_UVM_MAIN_SUCCESS") == "1" {
-		os.Args = []string{"uvm", "list", "go"}
+		os.Args = []string{"uvm", "--version"}
 		main()
 		return
 	}
@@ -357,7 +513,7 @@ func TestMainExecutionSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("process exited with err: %v, output: %s", err, string(output))
 	}
-	if !strings.Contains(string(output), "Listing installed versions for go") {
+	if !strings.Contains(string(output), version) {
 		t.Errorf("unexpected output: %s", string(output))
 	}
 }
@@ -376,3 +532,192 @@ func TestMainExecutionFailure(t *testing.T) {
 		t.Fatalf("expected main() to exit with error code for invalid command")
 	}
 }
+
+func TestListRemoteCmd(t *testing.T) {
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// List remote all
+	err := Execute([]string{"list-remote"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available remote versions") {
+		t.Errorf("list-remote all failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote with aliases
+	outBuf.Reset()
+	err = Execute([]string{"ls-remote"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available remote versions") {
+		t.Errorf("ls-remote failed: %v, out: %s", err, outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"list-all"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available remote versions") {
+		t.Errorf("list-all failed: %v, out: %s", err, outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"ls-r"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available remote versions") {
+		t.Errorf("ls-r failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote with flag on list
+	outBuf.Reset()
+	err = Execute([]string{"list", "--remote"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available remote versions") {
+		t.Errorf("list --remote failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote node
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "node"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Node.js versions") {
+		t.Errorf("list-remote node failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote go
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "go"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Go versions") {
+		t.Errorf("list-remote go failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote python
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "python"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Python versions") {
+		t.Errorf("list-remote python failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote aliases (nodejs, golang, py, python3)
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "nodejs"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Node.js versions") {
+		t.Errorf("list-remote nodejs failed: %v, out: %s", err, outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "golang"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Go versions") {
+		t.Errorf("list-remote golang failed: %v, out: %s", err, outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "py"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Python versions") {
+		t.Errorf("list-remote py failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List --remote <runtime>
+	outBuf.Reset()
+	err = Execute([]string{"list", "-r", "python"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Python versions") {
+		t.Errorf("list -r python failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote invalid runtime
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "invalid_rt"}, outBuf, errBuf)
+	if err == nil {
+		t.Errorf("expected error for list-remote invalid_rt")
+	}
+}
+
+func TestPartialVersionResolution(t *testing.T) {
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	// Mock installations with full patch versions
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v24.20.0", "bin"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.6", "bin"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.9", "bin"), 0755)
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// Use node with major version "24"
+	err := Execute([]string{"use", "node", "24"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Now using Node.js v24.20.0") {
+		t.Errorf("use node 24 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Use go with major.minor "1.22"
+	outBuf.Reset()
+	err = Execute([]string{"use", "go", "1.22"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Now using Go go1.22.6") {
+		t.Errorf("use go 1.22 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Use python with major.minor "3.12"
+	outBuf.Reset()
+	err = Execute([]string{"use", "python", "3.12"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Now using Python 3.12.9") {
+		t.Errorf("use python 3.12 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove node with major version "24"
+	outBuf.Reset()
+	err = Execute([]string{"remove", "node", "24"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "v24.20.0 removed successfully") {
+		t.Errorf("remove node 24 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove go with major.minor "1.22"
+	outBuf.Reset()
+	err = Execute([]string{"rm", "go", "1.22"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "go1.22.6 removed successfully") {
+		t.Errorf("remove go 1.22 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove python with major.minor "3.12"
+	outBuf.Reset()
+	err = Execute([]string{"uninstall", "python", "3.12"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "3.12.9 removed successfully") {
+		t.Errorf("remove python 3.12 failed: %v, out: %s", err, outBuf.String())
+	}
+}
+
+func TestCompletions(t *testing.T) {
+	cmd := NewRootCmd()
+
+	// Test runtime completion
+	rts, _ := runtimeCompletion(cmd, []string{}, "")
+	if len(rts) != 3 {
+		t.Errorf("expected 3 runtimes in completion, got %d", len(rts))
+	}
+
+	rtsNone, _ := runtimeCompletion(cmd, []string{"node"}, "")
+	if rtsNone != nil {
+		t.Errorf("expected nil for second arg in runtimeCompletion")
+	}
+
+	// Test version completion for install
+	installFn := versionCompletion(true)
+	versInstall, _ := installFn(cmd, []string{"node"}, "")
+	if len(versInstall) == 0 {
+		t.Errorf("expected version completions for install")
+	}
+
+	_ , _ = installFn(cmd, []string{"go"}, "")
+	_ , _ = installFn(cmd, []string{"python"}, "")
+
+	// Test version completion for use
+	useFn := versionCompletion(false)
+	versUse, _ := useFn(cmd, []string{"node"}, "")
+	if versUse != nil && len(versUse) > 0 {
+		// ok
+	}
+	_ , _ = useFn(cmd, []string{"go"}, "")
+	_ , _ = useFn(cmd, []string{"python"}, "")
+	_ , _ = useFn(cmd, []string{}, "")
+	_ , _ = useFn(cmd, []string{"node", "v20", "extra"}, "")
+}
+

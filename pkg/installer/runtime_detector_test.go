@@ -145,3 +145,111 @@ func TestDetectNodeIgnoresUVM(t *testing.T) {
 		t.Errorf("expected detector to ignore node inside .uvm, but found %+v", result)
 	}
 }
+
+func TestDetectGo(t *testing.T) {
+	tmpDir := t.TempDir()
+	goBin := filepath.Join(tmpDir, "usr", "local", "go", "bin")
+	_ = os.MkdirAll(goBin, 0755)
+	goExe := filepath.Join(goBin, "go")
+	_ = os.WriteFile(goExe, []byte("fake"), 0755)
+
+	detector := NewRuntimeDetector(tmpDir, "darwin")
+	detector.LookPath = func(file string) (string, error) {
+		if file == "go" {
+			return goExe, nil
+		}
+		return "", os.ErrNotExist
+	}
+	detector.RunCmd = func(name string, args ...string) (string, error) {
+		if name == goExe && len(args) > 0 && args[0] == "version" {
+			return "go version go1.22.0 darwin/arm64", nil
+		}
+		return "", fmt.Errorf("command failed")
+	}
+
+	res := detector.DetectGo()
+	if !res.Found || res.Version != "go1.22.0" {
+		t.Fatalf("expected Go detected go1.22.0, got: %+v", res)
+	}
+
+	// Test windows Go fallback
+	winDetector := NewRuntimeDetector(tmpDir, "windows")
+	progFiles := filepath.Join(tmpDir, "Program Files")
+	winGoExe := filepath.Join(progFiles, "Go", "bin", "go.exe")
+	_ = os.MkdirAll(filepath.Dir(winGoExe), 0755)
+	_ = os.WriteFile(winGoExe, []byte("fake"), 0755)
+	winDetector.Env = func(key string) string {
+		if key == "ProgramFiles" {
+			return progFiles
+		}
+		return ""
+	}
+	winDetector.LookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+	winDetector.RunCmd = func(name string, args ...string) (string, error) {
+		return "go version go1.23.0 windows/amd64", nil
+	}
+
+	winRes := winDetector.DetectGo()
+	if !winRes.Found || winRes.Version != "go1.23.0" {
+		t.Fatalf("expected Windows Go detected, got: %+v", winRes)
+	}
+}
+
+func TestDetectPython(t *testing.T) {
+	tmpDir := t.TempDir()
+	pyBin := filepath.Join(tmpDir, "usr", "local", "bin")
+	_ = os.MkdirAll(pyBin, 0755)
+	pyExe := filepath.Join(pyBin, "python3")
+	_ = os.WriteFile(pyExe, []byte("fake"), 0755)
+
+	detector := NewRuntimeDetector(tmpDir, "darwin")
+	detector.LookPath = func(file string) (string, error) {
+		if file == "python3" {
+			return pyExe, nil
+		}
+		return "", os.ErrNotExist
+	}
+	detector.RunCmd = func(name string, args ...string) (string, error) {
+		if name == pyExe && len(args) > 0 && args[0] == "--version" {
+			return "Python 3.12.2", nil
+		}
+		return "", fmt.Errorf("command failed")
+	}
+
+	res := detector.DetectPython()
+	if !res.Found || res.Version != "3.12.2" {
+		t.Fatalf("expected Python detected 3.12.2, got: %+v", res)
+	}
+
+	// Test windows Python
+	winDetector := NewRuntimeDetector(tmpDir, "windows")
+	localAppData := filepath.Join(tmpDir, "AppData", "Local")
+	winPyExe := filepath.Join(localAppData, "Programs", "Python", "Python312", "python.exe")
+	_ = os.MkdirAll(filepath.Dir(winPyExe), 0755)
+	_ = os.WriteFile(winPyExe, []byte("fake"), 0755)
+	winDetector.Env = func(key string) string {
+		if key == "LOCALAPPDATA" {
+			return localAppData
+		}
+		return ""
+	}
+	winDetector.LookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+	winDetector.RunCmd = func(name string, args ...string) (string, error) {
+		return "Python 3.12.0", nil
+	}
+
+	winRes := winDetector.DetectPython()
+	if !winRes.Found || winRes.Version != "3.12.0" {
+		t.Fatalf("expected Windows Python detected, got: %+v", winRes)
+	}
+
+	all := detector.DetectAllRuntimes()
+	if len(all) == 0 {
+		t.Errorf("expected detected runtimes in all, got 0")
+	}
+}
+

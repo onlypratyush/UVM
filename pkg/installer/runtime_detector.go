@@ -220,6 +220,150 @@ func (d *RuntimeDetector) DetectNode() DetectedRuntime {
 	return result
 }
 
+// DetectGo detects an existing Go installation across platforms.
+func (d *RuntimeDetector) DetectGo() DetectedRuntime {
+	result := DetectedRuntime{
+		Name:  "go",
+		Found: false,
+	}
+
+	var candidatePaths []string
+	if p, err := d.LookPath("go"); err == nil && p != "" {
+		candidatePaths = append(candidatePaths, p)
+	}
+
+	if d.GOOS == "windows" {
+		progFiles := d.Env("ProgramFiles")
+		if progFiles == "" {
+			progFiles = `C:\Program Files`
+		}
+		candidatePaths = append(candidatePaths,
+			filepath.Join(progFiles, "Go", "bin", "go.exe"),
+			`C:\Go\bin\go.exe`,
+		)
+	} else {
+		candidatePaths = append(candidatePaths,
+			"/opt/homebrew/bin/go",
+			"/usr/local/go/bin/go",
+			"/usr/local/bin/go",
+			"/usr/bin/go",
+		)
+	}
+
+	for _, cand := range candidatePaths {
+		if cand == "" {
+			continue
+		}
+		if strings.Contains(cand, filepath.Join(".uvm", "bin")) ||
+			strings.Contains(cand, filepath.Join(".uvm", "versions")) {
+			continue
+		}
+
+		if _, err := d.Stat(cand); err == nil {
+			out, err := d.RunCmd(cand, "version")
+			if err == nil && strings.Contains(out, "go version") {
+				parts := strings.Fields(out)
+				ver := ""
+				if len(parts) >= 3 {
+					ver = parts[2]
+				} else {
+					ver = out
+				}
+				result.Found = true
+				result.Version = ver
+				result.ExecutablePath = cand
+				result.InstallDir = filepath.Dir(filepath.Dir(cand))
+				result.ManagerType = "System / Standalone"
+				if strings.Contains(strings.ToLower(cand), "homebrew") {
+					result.ManagerType = "Homebrew"
+				}
+				result.PathEntries = []string{filepath.Dir(cand)}
+				result.Details = fmt.Sprintf("Go %s found at %s", result.Version, result.InstallDir)
+				return result
+			}
+		}
+	}
+
+	return result
+}
+
+// DetectPython detects an existing Python installation across platforms.
+func (d *RuntimeDetector) DetectPython() DetectedRuntime {
+	result := DetectedRuntime{
+		Name:  "python",
+		Found: false,
+	}
+
+	var candidatePaths []string
+	if p, err := d.LookPath("python3"); err == nil && p != "" {
+		candidatePaths = append(candidatePaths, p)
+	}
+	if p, err := d.LookPath("python"); err == nil && p != "" {
+		candidatePaths = append(candidatePaths, p)
+	}
+
+	if d.GOOS == "windows" {
+		progFiles := d.Env("ProgramFiles")
+		if progFiles == "" {
+			progFiles = `C:\Program Files`
+		}
+		localAppData := d.Env("LOCALAPPDATA")
+		if localAppData == "" && d.UserHome != "" {
+			localAppData = filepath.Join(d.UserHome, "AppData", "Local")
+		}
+		candidatePaths = append(candidatePaths,
+			filepath.Join(progFiles, "Python312", "python.exe"),
+			filepath.Join(localAppData, "Programs", "Python", "Python312", "python.exe"),
+			`C:\Python312\python.exe`,
+		)
+	} else {
+		candidatePaths = append(candidatePaths,
+			"/opt/homebrew/bin/python3",
+			"/usr/local/bin/python3",
+			"/usr/bin/python3",
+			"/usr/bin/python",
+		)
+	}
+
+	for _, cand := range candidatePaths {
+		if cand == "" {
+			continue
+		}
+		if strings.Contains(cand, filepath.Join(".uvm", "bin")) ||
+			strings.Contains(cand, filepath.Join(".uvm", "versions")) {
+			continue
+		}
+
+		if _, err := d.Stat(cand); err == nil {
+			out, err := d.RunCmd(cand, "--version")
+			if err == nil && (strings.HasPrefix(out, "Python") || strings.HasPrefix(out, "python")) {
+				parts := strings.Fields(out)
+				ver := ""
+				if len(parts) >= 2 {
+					ver = parts[1]
+				} else {
+					ver = out
+				}
+				result.Found = true
+				result.Version = ver
+				result.ExecutablePath = cand
+				result.InstallDir = filepath.Dir(cand)
+				result.ManagerType = "System / Standalone"
+				if strings.Contains(strings.ToLower(cand), "homebrew") {
+					result.ManagerType = "Homebrew"
+				} else if strings.Contains(strings.ToLower(cand), "pyenv") {
+					result.ManagerType = "Pyenv"
+				}
+				result.PathEntries = []string{filepath.Dir(cand)}
+				result.Details = fmt.Sprintf("Python %s found at %s", result.Version, result.InstallDir)
+				return result
+			}
+		}
+	}
+
+	return result
+}
+
 // DetectAllRuntimes scans and detects all supported runtimes.
 func (d *RuntimeDetector) DetectAllRuntimes() []DetectedRuntime {
 	var runtimes []DetectedRuntime
@@ -227,6 +371,16 @@ func (d *RuntimeDetector) DetectAllRuntimes() []DetectedRuntime {
 	nodeRt := d.DetectNode()
 	if nodeRt.Found {
 		runtimes = append(runtimes, nodeRt)
+	}
+
+	goRt := d.DetectGo()
+	if goRt.Found {
+		runtimes = append(runtimes, goRt)
+	}
+
+	pyRt := d.DetectPython()
+	if pyRt.Found {
+		runtimes = append(runtimes, pyRt)
 	}
 
 	return runtimes

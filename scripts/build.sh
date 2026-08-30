@@ -7,7 +7,7 @@ set -e
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${REPO_ROOT}/dist"
-VERSION="${1:-0.0.3}"
+VERSION="${1:-0.0.4}"
 
 # Target platforms and architectures: OS/ARCH/EXT
 TARGETS=(
