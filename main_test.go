@@ -721,3 +721,140 @@ func TestCompletions(t *testing.T) {
 	_ , _ = useFn(cmd, []string{"node", "v20", "extra"}, "")
 }
 
+func TestUseAutoSwitchUvmrc(t *testing.T) {
+	tmpHome := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("USERPROFILE", tmpHome)
+
+	// Create installed versions in home
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0", "bin"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.6", "bin"), 0755)
+
+	// Create project directory with .uvmrc
+	projectDir := filepath.Join(tmpHome, "my-project")
+	_ = os.MkdirAll(projectDir, 0755)
+	_ = os.WriteFile(filepath.Join(projectDir, ".uvmrc"), []byte("node 20\ngo 1.22\n"), 0644)
+
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	_ = os.Chdir(projectDir)
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// Run `uvm use` (0 args) inside project directory
+	err := Execute([]string{"use"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Found") || !strings.Contains(outBuf.String(), "Now using Node.js v20.11.0") {
+		t.Fatalf("use auto-switch failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Test in empty dir without .uvmrc
+	emptyDir := filepath.Join(tmpHome, "empty-dir")
+	_ = os.MkdirAll(emptyDir, 0755)
+	_ = os.Chdir(emptyDir)
+
+	outBuf.Reset()
+	err = Execute([]string{"use"}, outBuf, errBuf)
+	if err == nil {
+		t.Errorf("expected error when running 'uvm use' with no .uvmrc")
+	}
+
+	// Test single arg error
+	err = Execute([]string{"use", "node"}, outBuf, errBuf)
+	if err == nil {
+		t.Errorf("expected error when running 'uvm use node' with 1 argument")
+	}
+}
+
+func TestPinCmd(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	_ = os.Chdir(tmpDir)
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// Pin node 20
+	err := Execute([]string{"pin", "node", "20"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Pinned node 20") {
+		t.Fatalf("pin node failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Pin go 1.22
+	outBuf.Reset()
+	err = Execute([]string{"pin", "go", "1.22"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Pinned go 1.22") {
+		t.Fatalf("pin go failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Pin invalid runtime
+	outBuf.Reset()
+	err = Execute([]string{"pin", "invalid_rt", "1.0"}, outBuf, errBuf)
+	if err == nil {
+		t.Errorf("expected error pinning invalid runtime")
+	}
+
+	// Verify .uvmrc exists and contains both
+	data, err := os.ReadFile(filepath.Join(tmpDir, ".uvmrc"))
+	if err != nil || !strings.Contains(string(data), "node 20") || !strings.Contains(string(data), "go 1.22") {
+		t.Errorf("invalid .uvmrc content: %s", string(data))
+	}
+}
+
+func TestInitCmd(t *testing.T) {
+	tmpDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+	_ = os.Chdir(tmpDir)
+
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+
+	// 1. Node Express TS
+	err := Execute([]string{"init", "my-node-api", "--lang", "node", "--framework", "express", "--ts", "--crud"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "created successfully") {
+		t.Fatalf("init node express ts failed: %v, out: %s", err, outBuf.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "my-node-api", ".uvmrc")); err != nil {
+		t.Errorf("expected .uvmrc in scaffolded project")
+	}
+
+	// 2. Go Gin
+	outBuf.Reset()
+	err = Execute([]string{"init", "my-go-api", "--lang", "go", "--framework", "gin", "--crud"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "created successfully") {
+		t.Fatalf("init go gin failed: %v, out: %s", err, outBuf.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "my-go-api", "go.mod")); err != nil {
+		t.Errorf("expected go.mod in scaffolded project")
+	}
+
+	// 3. Go Chi & Fiber
+	outBuf.Reset()
+	_ = Execute([]string{"create", "my-chi-api", "--lang", "go", "--framework", "chi"}, outBuf, errBuf)
+	if _, err := os.Stat(filepath.Join(tmpDir, "my-chi-api", "go.mod")); err != nil {
+		t.Errorf("expected my-chi-api/go.mod")
+	}
+
+	outBuf.Reset()
+	_ = Execute([]string{"scaffold", "my-fiber-api", "--lang", "go", "--framework", "fiber"}, outBuf, errBuf)
+	if _, err := os.Stat(filepath.Join(tmpDir, "my-fiber-api", "go.mod")); err != nil {
+		t.Errorf("expected my-fiber-api/go.mod")
+	}
+
+	// 4. Fastify
+	outBuf.Reset()
+	_ = Execute([]string{"new", "my-fastify-api", "--lang", "node", "--framework", "fastify"}, outBuf, errBuf)
+	if _, err := os.Stat(filepath.Join(tmpDir, "my-fastify-api", "package.json")); err != nil {
+		t.Errorf("expected my-fastify-api/package.json")
+	}
+}
+
+

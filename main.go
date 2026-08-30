@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"uvm/pkg/config"
 	"uvm/pkg/golang"
 	"uvm/pkg/node"
 	"uvm/pkg/python"
+	"uvm/pkg/scaffold"
 )
 
 var version = "0.0.4"
@@ -21,7 +25,8 @@ func NewRootCmd() *cobra.Command {
 		Use:   "uvm",
 		Short: "Universal Version Manager",
 		Long: `uvm (Universal Version Manager) is a fast, lightweight CLI tool to install, 
-manage, and switch between multiple programming language runtimes (Node.js, Go, Python) and versions seamlessly.`,
+manage, and switch between multiple programming language runtimes (Node.js, Go, Python), 
+auto-switch versions via .uvmrc, and scaffold production-ready clean architecture projects.`,
 		Version:      version,
 		SilenceUsage: true,
 	}
@@ -33,6 +38,8 @@ manage, and switch between multiple programming language runtimes (Node.js, Go, 
 		newListRemoteCmd(),
 		newRemoveCmd(),
 		newCurrentCmd(),
+		newInitCmd(),
+		newPinCmd(),
 	)
 
 	return rootCmd
@@ -126,11 +133,47 @@ func newInstallCmd() *cobra.Command {
 func newUseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "use [runtime] [version]",
-		Short:   "Switch to a specific installed runtime version (supports partial prefix e.g. '24')",
-		Args:    cobra.ExactArgs(2),
-		Example: "  uvm use node 24\n  uvm use node 20.11.0\n  uvm use go 1.22\n  uvm use python 3.12",
+		Short:   "Switch to a specific installed runtime version or auto-switch from .uvmrc",
+		Args:    cobra.MaximumNArgs(2),
+		Example: "  uvm use                  # Auto-switches using .uvmrc in current directory\n  uvm use node 24          # Switches Node.js to v24.x\n  uvm use go 1.22          # Switches Go to 1.22.x\n  uvm use python 3.12      # Switches Python to 3.12.x",
 		ValidArgsFunction: versionCompletion(false),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Auto-detection mode if no arguments provided
+			if len(args) == 0 {
+				runtimes, matchedFile, err := config.DetectProjectRuntimes("")
+				if err != nil {
+					return fmt.Errorf("no runtime specified and no .uvmrc or project configuration found in current directory\nUsage: 'uvm use <runtime> <version>' or run 'uvm pin <runtime> <version>'")
+				}
+
+				fmt.Fprintf(cmd.OutOrStdout(), "📁 Found %s -> Auto-switching runtime versions:\n", matchedFile)
+
+				for rt, ver := range runtimes {
+					fmt.Fprintf(cmd.OutOrStdout(), "  -> Switching %s to %s...\n", rt, ver)
+					switch rt {
+					case "node", "nodejs":
+						mgr := node.NewManager("")
+						if err := mgr.Use(ver, cmd.OutOrStdout()); err != nil {
+							return err
+						}
+					case "go", "golang":
+						mgr := golang.NewManager("")
+						if err := mgr.Use(ver, cmd.OutOrStdout()); err != nil {
+							return err
+						}
+					case "python", "py", "python3":
+						mgr := python.NewManager("")
+						if err := mgr.Use(ver, cmd.OutOrStdout()); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			}
+
+			if len(args) == 1 {
+				return fmt.Errorf("missing version argument for runtime %q (run 'uvm use %s <version>')", args[0], args[0])
+			}
+
 			runtime, ver := args[0], args[1]
 			switch runtime {
 			case "node", "nodejs":
@@ -147,6 +190,186 @@ func newUseCmd() *cobra.Command {
 			}
 		},
 	}
+	return cmd
+}
+
+func newPinCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "pin [runtime] [version]",
+		Short:   "Pin a runtime version in current directory's .uvmrc",
+		Args:    cobra.ExactArgs(2),
+		Example: "  uvm pin node 20\n  uvm pin go 1.22\n  uvm pin python 3.12",
+		ValidArgsFunction: versionCompletion(false),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rt, ver := strings.ToLower(args[0]), args[1]
+			switch rt {
+			case "node", "nodejs":
+				rt = "node"
+			case "go", "golang":
+				rt = "go"
+			case "python", "py", "python3":
+				rt = "python"
+			default:
+				return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", rt)
+			}
+
+			// Read existing .uvmrc if exists in current dir
+			existing, _, _ := config.DetectProjectRuntimes(".")
+			if existing == nil {
+				existing = make(map[string]string)
+			}
+			existing[rt] = ver
+
+			if err := config.WriteUvmrc(".", existing); err != nil {
+				return fmt.Errorf("failed to write .uvmrc: %w", err)
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "✓ Pinned %s %s to .uvmrc in current directory\n", rt, ver)
+			return nil
+		},
+	}
+	return cmd
+}
+
+func newInitCmd() *cobra.Command {
+	var (
+		lang        string
+		framework   string
+		isTS        bool
+		includeCRUD bool
+	)
+
+	cmd := &cobra.Command{
+		Use:     "init [project-name]",
+		Aliases: []string{"create", "scaffold", "new"},
+		Short:   "Scaffold a production-grade clean architecture project with .uvmrc",
+		Args:    cobra.MaximumNArgs(1),
+		Example: `  uvm init my-api
+  uvm init my-node-api --lang node --framework express --ts --crud
+  uvm init my-fastify-api --lang node --framework fastify --ts
+  uvm init my-go-api --lang go --framework gin --crud
+  uvm init my-chi-api --lang go --framework chi`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectName := ""
+			if len(args) > 0 {
+				projectName = args[0]
+			}
+
+			// If no arguments and no flags provided -> interactive wizard mode
+			if projectName == "" && cmd.Flags().NFlag() == 0 {
+				reader := bufio.NewReader(cmd.InOrStdin())
+
+				fmt.Fprint(cmd.OutOrStdout(), "Project Name: ")
+				input, _ := reader.ReadString('\n')
+				projectName = strings.TrimSpace(input)
+				if projectName == "" {
+					return fmt.Errorf("project name cannot be empty")
+				}
+
+				fmt.Fprintln(cmd.OutOrStdout(), "\nSelect programming language:")
+				fmt.Fprintln(cmd.OutOrStdout(), "  1) Node.js (Express, Fastify)")
+				fmt.Fprintln(cmd.OutOrStdout(), "  2) Go (Gin, Chi, Fiber)")
+				fmt.Fprint(cmd.OutOrStdout(), "Choice [1-2] (default 1): ")
+				input, _ = reader.ReadString('\n')
+				choice := strings.TrimSpace(input)
+				if choice == "2" || strings.HasPrefix(strings.ToLower(choice), "g") {
+					lang = "go"
+				} else {
+					lang = "node"
+				}
+
+				if lang == "node" {
+					fmt.Fprint(cmd.OutOrStdout(), "Use TypeScript? [Y/n] (default Y): ")
+					input, _ = reader.ReadString('\n')
+					ans := strings.TrimSpace(strings.ToLower(input))
+					if ans == "" || ans == "y" || ans == "yes" {
+						isTS = true
+					}
+
+					fmt.Fprintln(cmd.OutOrStdout(), "\nSelect Web Framework:")
+					fmt.Fprintln(cmd.OutOrStdout(), "  1) Express (Clean Layered Architecture)")
+					fmt.Fprintln(cmd.OutOrStdout(), "  2) Fastify (High Performance & Schemas)")
+					fmt.Fprint(cmd.OutOrStdout(), "Choice [1-2] (default 1): ")
+					input, _ = reader.ReadString('\n')
+					choice = strings.TrimSpace(input)
+					if choice == "2" || strings.HasPrefix(strings.ToLower(choice), "f") {
+						framework = "fastify"
+					} else {
+						framework = "express"
+					}
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), "\nSelect Go Web Framework:")
+					fmt.Fprintln(cmd.OutOrStdout(), "  1) Gin (Popular, fast & robust)")
+					fmt.Fprintln(cmd.OutOrStdout(), "  2) Chi (Lightweight & idiomatic)")
+					fmt.Fprintln(cmd.OutOrStdout(), "  3) Fiber (Express-inspired high throughput)")
+					fmt.Fprint(cmd.OutOrStdout(), "Choice [1-3] (default 1): ")
+					input, _ = reader.ReadString('\n')
+					choice = strings.TrimSpace(input)
+					if choice == "2" || strings.HasPrefix(strings.ToLower(choice), "c") {
+						framework = "chi"
+					} else if choice == "3" || strings.HasPrefix(strings.ToLower(choice), "f") {
+						framework = "fiber"
+					} else {
+						framework = "gin"
+					}
+				}
+			}
+
+			if projectName == "" {
+				return fmt.Errorf("project name cannot be empty (usage: 'uvm init <project-name>')")
+			}
+
+			if lang == "" {
+				lang = "node"
+			}
+
+			dialect := "js"
+			if isTS {
+				dialect = "ts"
+			}
+
+			if framework == "" {
+				if lang == "go" {
+					framework = "gin"
+				} else {
+					framework = "express"
+				}
+			}
+
+			// Get current active version to pin in .uvmrc
+			pinnedVersion := ""
+			if lang == "node" {
+				if v, err := node.NewManager("").Current(); err == nil {
+					pinnedVersion = v
+				} else {
+					pinnedVersion = "20"
+				}
+			} else if lang == "go" {
+				if v, err := golang.NewManager("").Current(); err == nil {
+					pinnedVersion = v
+				} else {
+					pinnedVersion = "1.22"
+				}
+			}
+
+			mgr := scaffold.NewManager()
+			return mgr.Scaffold(scaffold.ProjectOptions{
+				ProjectName: projectName,
+				TargetDir:   projectName,
+				Language:    lang,
+				Dialect:     dialect,
+				Framework:   framework,
+				IncludeCRUD: includeCRUD,
+				Version:     pinnedVersion,
+			}, cmd.OutOrStdout())
+		},
+	}
+
+	cmd.Flags().StringVarP(&lang, "lang", "l", "", "Language runtime: node, go")
+	cmd.Flags().StringVarP(&framework, "framework", "f", "", "Web Framework: express, fastify, gin, chi, fiber")
+	cmd.Flags().BoolVar(&isTS, "ts", false, "Use TypeScript for Node.js projects")
+	cmd.Flags().BoolVar(&includeCRUD, "crud", true, "Include complete working CRUD API endpoints")
+
 	return cmd
 }
 

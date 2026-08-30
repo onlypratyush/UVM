@@ -139,6 +139,111 @@ uvm current
 
 ---
 
+## 📁 Project `.uvmrc` & Automatic Version Switching
+
+`uvm` supports project-level version pinning via `.uvmrc`. Whenever you run `uvm use` inside any project directory, `uvm` automatically scans current and parent directories for `.uvmrc` and switches your active runtime versions!
+
+### 📌 Pinning Runtime Versions in `.uvmrc`
+```bash
+# Pin Node.js to version 20
+uvm pin node 20
+
+# Pin Go to version 1.22
+uvm pin go 1.22
+
+# Pin Python to version 3.12
+uvm pin python 3.12
+```
+
+### 🔄 Auto-Switching
+```bash
+# Inside any directory containing .uvmrc (or .nvmrc / go.mod):
+uvm use
+```
+*Output:*
+```text
+📁 Found /my-project/.uvmrc -> Auto-switching runtime versions:
+  -> Switching node to 20...
+  Now using Node.js v20.11.0
+  -> Switching go to 1.22...
+  Now using Go go1.22.6
+```
+
+---
+
+## 🏗️ Pre-Built Clean Architecture Templates (`uvm init` / `uvm create`)
+
+Quickly scaffold production-grade backend projects with clean layered architectures and working CRUD APIs in one command:
+
+### 🟢 1. Node.js Templates (Express & Fastify)
+```bash
+# Interactive mode (prompts for language, dialect, and framework)
+uvm init my-app
+
+# Express + TypeScript with CRUD REST API
+uvm init my-express-api --lang node --framework express --ts --crud
+
+# Express + JavaScript
+uvm init my-express-js --lang node --framework express
+
+# Fastify + TypeScript (with JSON schema validation & plugins)
+uvm init my-fastify-api --lang node --framework fastify --ts --crud
+
+# Fastify + JavaScript
+uvm init my-fastify-js --lang node --framework fastify
+```
+
+**Scaffolded Express Architecture:**
+```text
+my-express-api/
+├── src/
+│   ├── controllers/      # Request handlers & response formatting
+│   ├── services/         # Business logic & domain models
+│   ├── routes/           # Express router endpoints (/api/items, /health)
+│   ├── middleware/       # Request logger, error handlers, CORS
+│   ├── types/            # TypeScript interfaces & DTOs
+│   └── app.ts            # Server entrypoint
+├── .env.example
+├── .gitignore
+├── .uvmrc                # Project runtime pinned by UVM
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+### 🔵 2. Go Templates (Gin, Chi, Fiber)
+```bash
+# Gin Clean Architecture with CRUD REST API
+uvm init my-gin-api --lang go --framework gin --crud
+
+# Chi Idiomatic REST API
+uvm init my-chi-api --lang go --framework chi
+
+# Fiber High-Performance API
+uvm init my-fiber-api --lang go --framework fiber
+```
+
+**Scaffolded Go Architecture (Standard Project Layout):**
+```text
+my-gin-api/
+├── cmd/
+│   └── server/
+│       └── main.go       # Server entrypoint & bootstrap
+├── internal/
+│   ├── handlers/         # HTTP controller handlers
+│   ├── models/           # Domain entity structs & request validation
+│   ├── repository/       # Data storage interface & in-memory/DB store
+│   └── routes/           # Gin/Chi/Fiber route definitions
+├── .env.example
+├── .gitignore
+├── .uvmrc                # Project Go runtime pinned by UVM
+├── go.mod
+├── Makefile
+└── README.md
+```
+
+---
+
 ## ⚡ Shell Autocompletion
 
 `uvm` provides dynamic shell autocompletion for commands, runtime names (`node`, `go`, `python`), and version strings:
