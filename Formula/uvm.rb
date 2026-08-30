@@ -28,6 +28,17 @@ class Uvm < Formula
     bin.install "uvm"
   end
 
+  def caveats
+    <<~EOS
+      To make runtimes installed by uvm (like node, npm, etc.) available in your terminal,
+      add uvm's bin directory to your PATH:
+
+        export PATH="$HOME/.uvm/bin:$PATH"
+
+      Add this line to your ~/.zshrc or ~/.bashrc to make it permanent.
+    EOS
+  end
+
   test do
     assert_match "uvm version #{version}", shell_output("#{bin}/uvm --version")
   end

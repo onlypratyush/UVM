@@ -191,8 +191,8 @@ func TestUseCmd(t *testing.T) {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
-				if outBuf.String() != tt.expectedOut {
-					t.Errorf("expected output %q, got %q", tt.expectedOut, outBuf.String())
+				if !strings.Contains(outBuf.String(), tt.expectedOut) {
+					t.Errorf("expected output to contain %q, got %q", tt.expectedOut, outBuf.String())
 				}
 			}
 		})

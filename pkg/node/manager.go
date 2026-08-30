@@ -193,7 +193,7 @@ func (m *Manager) Install(versionInput string, out io.Writer) error {
 	destDir := filepath.Join(m.VersionsDir(), version)
 	if _, err := os.Stat(destDir); err == nil {
 		fmt.Fprintf(out, "Node.js %s is already installed at %s\n", version, destDir)
-		return nil
+		return m.Use(version, out)
 	}
 
 	fileName, isZip, err := m.GetArchiveTarget(version)
@@ -246,7 +246,7 @@ func (m *Manager) Install(versionInput string, out io.Writer) error {
 	}
 
 	fmt.Fprintf(out, "✓ Node.js %s installed successfully to %s\n", version, destDir)
-	return nil
+	return m.Use(version, out)
 }
 
 // Use switches the active Node.js version
@@ -320,6 +320,17 @@ func (m *Manager) Use(versionInput string, out io.Writer) error {
 	}
 
 	fmt.Fprintf(out, "Now using Node.js %s\n", version)
+
+	// Check if ~/.uvm/bin is in PATH
+	pathEnv := os.Getenv("PATH")
+	if !strings.Contains(pathEnv, m.BinDir()) {
+		fmt.Fprintf(out, "\nℹ Note: %s is not in your current PATH.\n", m.BinDir())
+		if m.GOOS == "windows" {
+			fmt.Fprintf(out, "To use node immediately in this terminal, run:\n  $env:Path = \"%s;\" + $env:Path\n", m.BinDir())
+		} else {
+			fmt.Fprintf(out, "To use node immediately in this terminal, run:\n  export PATH=\"%s:$PATH\"\n", m.BinDir())
+		}
+	}
 	return nil
 }
 
