@@ -364,6 +364,251 @@ func (d *RuntimeDetector) DetectPython() DetectedRuntime {
 	return result
 }
 
+// DetectPHP detects an existing PHP installation across platforms.
+func (d *RuntimeDetector) DetectPHP() DetectedRuntime {
+	result := DetectedRuntime{
+		Name:  "php",
+		Found: false,
+	}
+
+	var candidatePaths []string
+	if p, err := d.LookPath("php"); err == nil && p != "" {
+		candidatePaths = append(candidatePaths, p)
+	}
+
+	if d.GOOS == "windows" {
+		progFiles := d.Env("ProgramFiles")
+		if progFiles == "" {
+			progFiles = `C:\Program Files`
+		}
+		localAppData := d.Env("LOCALAPPDATA")
+		if localAppData == "" && d.UserHome != "" {
+			localAppData = filepath.Join(d.UserHome, "AppData", "Local")
+		}
+		candidatePaths = append(candidatePaths,
+			`C:\tools\php\php.exe`,
+			`C:\php\php.exe`,
+			filepath.Join(progFiles, "PHP", "php.exe"),
+			filepath.Join(localAppData, "Programs", "php", "php.exe"),
+		)
+	} else {
+		candidatePaths = append(candidatePaths,
+			"/opt/homebrew/bin/php",
+			"/usr/local/bin/php",
+			"/usr/bin/php",
+			filepath.Join(d.UserHome, ".phpenv", "shims", "php"),
+		)
+	}
+
+	for _, cand := range candidatePaths {
+		if cand == "" {
+			continue
+		}
+		if strings.Contains(cand, filepath.Join(".uvm", "bin")) ||
+			strings.Contains(cand, filepath.Join(".uvm", "versions")) {
+			continue
+		}
+
+		if _, err := d.Stat(cand); err == nil {
+			out, err := d.RunCmd(cand, "-v")
+			if err == nil && (strings.HasPrefix(out, "PHP ") || strings.Contains(out, "PHP ")) {
+				lines := strings.Split(out, "\n")
+				firstLine := lines[0]
+				parts := strings.Fields(firstLine)
+				ver := ""
+				if len(parts) >= 2 {
+					ver = parts[1]
+				} else {
+					ver = firstLine
+				}
+				result.Found = true
+				result.Version = ver
+				result.ExecutablePath = cand
+				result.InstallDir = filepath.Dir(cand)
+				result.ManagerType = "System / Standalone"
+				if strings.Contains(strings.ToLower(cand), "homebrew") {
+					result.ManagerType = "Homebrew"
+				}
+				result.PathEntries = []string{filepath.Dir(cand)}
+				result.Details = fmt.Sprintf("PHP %s found at %s", result.Version, result.InstallDir)
+				return result
+			}
+		}
+	}
+
+	return result
+}
+
+// DetectJava detects an existing Java (JDK) installation across platforms.
+func (d *RuntimeDetector) DetectJava() DetectedRuntime {
+	result := DetectedRuntime{
+		Name:  "java",
+		Found: false,
+	}
+
+	var candidatePaths []string
+	if p, err := d.LookPath("java"); err == nil && p != "" {
+		candidatePaths = append(candidatePaths, p)
+	}
+
+	if javaHome := d.Env("JAVA_HOME"); javaHome != "" {
+		if d.GOOS == "windows" {
+			candidatePaths = append(candidatePaths, filepath.Join(javaHome, "bin", "java.exe"))
+		} else {
+			candidatePaths = append(candidatePaths, filepath.Join(javaHome, "bin", "java"))
+		}
+	}
+
+	if d.GOOS == "windows" {
+		progFiles := d.Env("ProgramFiles")
+		if progFiles == "" {
+			progFiles = `C:\Program Files`
+		}
+		candidatePaths = append(candidatePaths,
+			filepath.Join(progFiles, "Java", "jdk-21", "bin", "java.exe"),
+			filepath.Join(progFiles, "Eclipse Adoptium", "jdk-21.0.6.7-hotspot", "bin", "java.exe"),
+			`C:\Program Files\Java\jdk-17\bin\java.exe`,
+		)
+	} else {
+		candidatePaths = append(candidatePaths,
+			"/opt/homebrew/opt/openjdk/bin/java",
+			"/usr/bin/java",
+			"/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin/java",
+			"/usr/lib/jvm/default-java/bin/java",
+			filepath.Join(d.UserHome, ".asdf", "shims", "java"),
+			filepath.Join(d.UserHome, ".sdkman", "candidates", "java", "current", "bin", "java"),
+		)
+	}
+
+	for _, cand := range candidatePaths {
+		if cand == "" {
+			continue
+		}
+		if strings.Contains(cand, filepath.Join(".uvm", "bin")) ||
+			strings.Contains(cand, filepath.Join(".uvm", "versions")) {
+			continue
+		}
+
+		if _, err := d.Stat(cand); err == nil {
+			out, err := d.RunCmd(cand, "-version")
+			if err != nil || out == "" {
+				out, err = d.RunCmd(cand, "--version")
+			}
+			if err == nil && (strings.Contains(out, "version") || strings.Contains(out, "openjdk") || strings.Contains(out, "java")) {
+				lines := strings.Split(out, "\n")
+				firstLine := lines[0]
+				ver := firstLine
+				if idx := strings.Index(firstLine, "\""); idx != -1 {
+					rest := firstLine[idx+1:]
+					if endIdx := strings.Index(rest, "\""); endIdx != -1 {
+						ver = rest[:endIdx]
+					}
+				} else {
+					parts := strings.Fields(firstLine)
+					if len(parts) >= 2 {
+						ver = parts[1]
+					}
+				}
+
+				result.Found = true
+				result.Version = ver
+				result.ExecutablePath = cand
+				result.InstallDir = filepath.Dir(filepath.Dir(cand))
+				result.ManagerType = "System / Standalone"
+				if strings.Contains(strings.ToLower(cand), "homebrew") {
+					result.ManagerType = "Homebrew"
+				} else if strings.Contains(strings.ToLower(cand), "sdkman") {
+					result.ManagerType = "SDKMAN"
+				}
+				result.PathEntries = []string{filepath.Dir(cand)}
+				result.Details = fmt.Sprintf("Java %s found at %s", result.Version, result.InstallDir)
+				return result
+			}
+		}
+	}
+
+	return result
+}
+
+// DetectBun probes for existing Bun installations outside of UVM.
+func (d *RuntimeDetector) DetectBun() DetectedRuntime {
+	result := DetectedRuntime{
+		Name:  "bun",
+		Found: false,
+	}
+
+	var candidates []string
+
+	if lp, err := d.LookPath("bun"); err == nil && lp != "" {
+		candidates = append(candidates, lp)
+	}
+	if d.GOOS == "windows" {
+		if lp, err := d.LookPath("bun.exe"); err == nil && lp != "" {
+			candidates = append(candidates, lp)
+		}
+	}
+
+	if d.UserHome != "" {
+		candidates = append(candidates, filepath.Join(d.UserHome, ".bun", "bin", "bun"))
+		if d.GOOS == "windows" {
+			candidates = append(candidates, filepath.Join(d.UserHome, ".bun", "bin", "bun.exe"))
+		}
+	}
+
+	if d.GOOS == "darwin" || d.GOOS == "linux" {
+		candidates = append(candidates,
+			"/opt/homebrew/bin/bun",
+			"/usr/local/bin/bun",
+			"/usr/bin/bun",
+		)
+	}
+
+	for _, cand := range candidates {
+		if cand == "" {
+			continue
+		}
+
+		cleanCand := filepath.Clean(cand)
+		if strings.Contains(cleanCand, filepath.Join(".uvm", "bin")) ||
+			strings.Contains(cleanCand, filepath.Join(".uvm", "versions")) {
+			continue
+		}
+
+		if _, err := d.Stat(cand); err == nil {
+			out, err := d.RunCmd(cand, "-v")
+			if err != nil {
+				out, err = d.RunCmd(cand, "--version")
+			}
+			if err == nil && len(out) > 0 {
+				ver := strings.TrimSpace(out)
+				lines := strings.Split(ver, "\n")
+				if len(lines) > 0 {
+					ver = strings.TrimSpace(lines[0])
+				}
+				ver = strings.TrimPrefix(ver, "bun-v")
+				ver = strings.TrimPrefix(ver, "bun-")
+				ver = strings.TrimPrefix(ver, "v")
+
+				result.Found = true
+				result.Version = ver
+				result.ExecutablePath = cand
+				result.InstallDir = filepath.Dir(cand)
+				result.ManagerType = "System / Standalone"
+				if strings.Contains(strings.ToLower(cand), ".bun") {
+					result.ManagerType = "Bun Installer"
+				} else if strings.Contains(strings.ToLower(cand), "homebrew") {
+					result.ManagerType = "Homebrew"
+				}
+				result.PathEntries = []string{filepath.Dir(cand)}
+				result.Details = fmt.Sprintf("Bun %s found at %s", result.Version, result.ExecutablePath)
+				return result
+			}
+		}
+	}
+
+	return result
+}
+
 // DetectAllRuntimes scans and detects all supported runtimes.
 func (d *RuntimeDetector) DetectAllRuntimes() []DetectedRuntime {
 	var runtimes []DetectedRuntime
@@ -381,6 +626,21 @@ func (d *RuntimeDetector) DetectAllRuntimes() []DetectedRuntime {
 	pyRt := d.DetectPython()
 	if pyRt.Found {
 		runtimes = append(runtimes, pyRt)
+	}
+
+	phpRt := d.DetectPHP()
+	if phpRt.Found {
+		runtimes = append(runtimes, phpRt)
+	}
+
+	javaRt := d.DetectJava()
+	if javaRt.Found {
+		runtimes = append(runtimes, javaRt)
+	}
+
+	bunRt := d.DetectBun()
+	if bunRt.Found {
+		runtimes = append(runtimes, bunRt)
 	}
 
 	return runtimes

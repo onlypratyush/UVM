@@ -156,10 +156,88 @@ require github.com/gin-gonic/gin v1.9.1
 		t.Errorf("expected .python-version detection, got: %+v, err: %v", res, err)
 	}
 
-	// 6. .uvmrc takes priority over all fallbacks
-	_ = os.WriteFile(filepath.Join(tmpDir, ".uvmrc"), []byte("node 24\ngo 1.23\n"), 0644)
+	// 6. .php-version fallback
+	_ = os.WriteFile(filepath.Join(tmpDir, ".php-version"), []byte("8.3.17\n"), 0644)
 	res, _, err = DetectProjectRuntimes(tmpDir)
-	if err != nil || res["node"] != "24" || res["go"] != "1.23" {
+	if err != nil || res["php"] != "8.3.17" {
+		t.Errorf("expected .php-version detection, got: %+v, err: %v", res, err)
+	}
+
+	// 7. composer.json fallback (remove .php-version)
+	_ = os.Remove(filepath.Join(tmpDir, ".php-version"))
+	composerContent := `{
+    "name": "vendor/project",
+    "require": {
+        "php": ">=8.2.0"
+    }
+}`
+	_ = os.WriteFile(filepath.Join(tmpDir, "composer.json"), []byte(composerContent), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["php"] != "8.2.0" {
+		t.Errorf("expected composer.json detection, got: %+v, err: %v", res, err)
+	}
+
+	// 8. .java-version fallback
+	_ = os.WriteFile(filepath.Join(tmpDir, ".java-version"), []byte("21.0.6\n"), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["java"] != "21.0.6" {
+		t.Errorf("expected .java-version detection, got: %+v, err: %v", res, err)
+	}
+
+	// 9. pom.xml fallback (remove .java-version)
+	_ = os.Remove(filepath.Join(tmpDir, ".java-version"))
+	pomContent := `<project>
+  <properties>
+    <java.version>17</java.version>
+  </properties>
+</project>`
+	_ = os.WriteFile(filepath.Join(tmpDir, "pom.xml"), []byte(pomContent), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["java"] != "17" {
+		t.Errorf("expected pom.xml detection, got: %+v, err: %v", res, err)
+	}
+
+	// 10. build.gradle fallback (remove pom.xml)
+	_ = os.Remove(filepath.Join(tmpDir, "pom.xml"))
+	gradleContent := `plugins {
+    id 'java'
+}
+sourceCompatibility = '21'
+`
+	_ = os.WriteFile(filepath.Join(tmpDir, "build.gradle"), []byte(gradleContent), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["java"] != "21" {
+		t.Errorf("expected build.gradle detection, got: %+v, err: %v", res, err)
+	}
+
+	// 11. Bun fallbacks: .bun-version
+	_ = os.WriteFile(filepath.Join(tmpDir, ".bun-version"), []byte("1.2.4\n"), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["bun"] != "1.2.4" {
+		t.Errorf("expected .bun-version detection, got: %+v, err: %v", res, err)
+	}
+
+	// 12. Bun fallback: package.json (remove .bun-version)
+	_ = os.Remove(filepath.Join(tmpDir, ".bun-version"))
+	pkgJsonContent := `{"name": "bun-app", "packageManager": "bun@1.2.0"}`
+	_ = os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte(pkgJsonContent), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["bun"] != "1.2.0" {
+		t.Errorf("expected package.json packageManager bun detection, got: %+v, err: %v", res, err)
+	}
+
+	// 13. Bun fallback: bun.lock (remove package.json)
+	_ = os.Remove(filepath.Join(tmpDir, "package.json"))
+	_ = os.WriteFile(filepath.Join(tmpDir, "bun.lock"), []byte("lockfile"), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["bun"] != "latest" {
+		t.Errorf("expected bun.lock detection, got: %+v, err: %v", res, err)
+	}
+
+	// 14. .uvmrc takes priority over all fallbacks
+	_ = os.WriteFile(filepath.Join(tmpDir, ".uvmrc"), []byte("node 24\ngo 1.23\nphp 8.4\njava 21\nbun 1.2\n"), 0644)
+	res, _, err = DetectProjectRuntimes(tmpDir)
+	if err != nil || res["node"] != "24" || res["go"] != "1.23" || res["php"] != "8.4" || res["java"] != "21" || res["bun"] != "1.2" {
 		t.Errorf("expected .uvmrc priority, got: %+v, err: %v", res, err)
 	}
 }

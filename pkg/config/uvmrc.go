@@ -95,6 +95,8 @@ func ParseUvmrc(filePath string) (map[string]string, error) {
 			runtime = "go"
 		case "py", "python3":
 			runtime = "python"
+		case "jdk", "openjdk":
+			runtime = "java"
 		}
 
 		if runtime != "" && version != "" {
@@ -117,8 +119,8 @@ func WriteUvmrc(dir string, runtimes map[string]string) error {
 	sb.WriteString("# UVM Project Runtime Configuration\n")
 	sb.WriteString("# Automatically detected by 'uvm use'\n\n")
 
-	// Order keys consistently: node, go, python, then others
-	order := []string{"node", "go", "python"}
+	// Order keys consistently: node, go, python, php, java, bun, then others
+	order := []string{"node", "go", "python", "php", "java", "bun"}
 	written := make(map[string]bool)
 
 	for _, rt := range order {
@@ -198,6 +200,109 @@ func DetectProjectRuntimes(dir string) (map[string]string, string, error) {
 			if matchedFile == "" {
 				matchedFile = pyVerPath
 			}
+		}
+	}
+
+	// PHP fallbacks: .php-version, composer.json
+	phpVerPath := filepath.Join(dir, ".php-version")
+	composerPath := filepath.Join(dir, "composer.json")
+	if data, err := os.ReadFile(phpVerPath); err == nil {
+		ver := strings.TrimSpace(string(data))
+		if ver != "" {
+			results["php"] = ver
+			if matchedFile == "" {
+				matchedFile = phpVerPath
+			}
+		}
+	} else if data, err := os.ReadFile(composerPath); err == nil {
+		re := regexp.MustCompile(`"php"\s*:\s*"[^0-9]*([0-9]+\.[0-9]+(\.[0-9]+)?)"`)
+		if matches := re.FindStringSubmatch(string(data)); len(matches) > 1 {
+			results["php"] = matches[1]
+			if matchedFile == "" {
+				matchedFile = composerPath
+			}
+		}
+	}
+
+	// Java fallbacks: .java-version, pom.xml, build.gradle, build.gradle.kts
+	javaVerPath := filepath.Join(dir, ".java-version")
+	pomPath := filepath.Join(dir, "pom.xml")
+	gradlePath := filepath.Join(dir, "build.gradle")
+	gradleKtsPath := filepath.Join(dir, "build.gradle.kts")
+
+	if data, err := os.ReadFile(javaVerPath); err == nil {
+		ver := strings.TrimSpace(string(data))
+		if ver != "" {
+			results["java"] = ver
+			if matchedFile == "" {
+				matchedFile = javaVerPath
+			}
+		}
+	} else if data, err := os.ReadFile(pomPath); err == nil {
+		re := regexp.MustCompile(`<(?:java\.version|maven\.compiler\.source|maven\.compiler\.target|release)>([0-9]+(\.[0-9]+)*)</`)
+		if matches := re.FindStringSubmatch(string(data)); len(matches) > 1 {
+			results["java"] = matches[1]
+			if matchedFile == "" {
+				matchedFile = pomPath
+			}
+		}
+	} else if data, err := os.ReadFile(gradlePath); err == nil {
+		re := regexp.MustCompile(`(?:sourceCompatibility|targetCompatibility|jvmToolchain\(?)\s*=?\s*['"]?([0-9]+(\.[0-9]+)*)`)
+		if matches := re.FindStringSubmatch(string(data)); len(matches) > 1 {
+			results["java"] = matches[1]
+			if matchedFile == "" {
+				matchedFile = gradlePath
+			}
+		}
+	} else if data, err := os.ReadFile(gradleKtsPath); err == nil {
+		re := regexp.MustCompile(`(?:sourceCompatibility|targetCompatibility|jvmToolchain\(?)\s*=?\s*['"]?([0-9]+(\.[0-9]+)*)`)
+		if matches := re.FindStringSubmatch(string(data)); len(matches) > 1 {
+			results["java"] = matches[1]
+			if matchedFile == "" {
+				matchedFile = gradleKtsPath
+			}
+		}
+	}
+
+	// Bun fallbacks: .bun-version, package.json (packageManager / engines.bun), bun.lock, bun.lockb
+	bunVerPath := filepath.Join(dir, ".bun-version")
+	pkgJsonPath := filepath.Join(dir, "package.json")
+	bunLockPath := filepath.Join(dir, "bun.lock")
+	bunLockbPath := filepath.Join(dir, "bun.lockb")
+
+	if data, err := os.ReadFile(bunVerPath); err == nil {
+		ver := strings.TrimSpace(string(data))
+		if ver != "" {
+			results["bun"] = ver
+			if matchedFile == "" {
+				matchedFile = bunVerPath
+			}
+		}
+	} else if data, err := os.ReadFile(pkgJsonPath); err == nil {
+		re := regexp.MustCompile(`"packageManager"\s*:\s*"bun@([0-9]+\.[0-9]+(\.[0-9]+)?)"`)
+		if matches := re.FindStringSubmatch(string(data)); len(matches) > 1 {
+			results["bun"] = matches[1]
+			if matchedFile == "" {
+				matchedFile = pkgJsonPath
+			}
+		} else {
+			reEng := regexp.MustCompile(`"bun"\s*:\s*"[^0-9]*([0-9]+\.[0-9]+(\.[0-9]+)?)"`)
+			if matchesEng := reEng.FindStringSubmatch(string(data)); len(matchesEng) > 1 {
+				results["bun"] = matchesEng[1]
+				if matchedFile == "" {
+					matchedFile = pkgJsonPath
+				}
+			}
+		}
+	} else if _, err := os.Stat(bunLockPath); err == nil {
+		results["bun"] = "latest"
+		if matchedFile == "" {
+			matchedFile = bunLockPath
+		}
+	} else if _, err := os.Stat(bunLockbPath); err == nil {
+		results["bun"] = "latest"
+		if matchedFile == "" {
+			matchedFile = bunLockbPath
 		}
 	}
 

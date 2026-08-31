@@ -8,16 +8,19 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"uvm/pkg/bun"
 	"uvm/pkg/config"
 	"uvm/pkg/golang"
+	"uvm/pkg/java"
 	"uvm/pkg/node"
+	"uvm/pkg/php"
 	"uvm/pkg/python"
 	"uvm/pkg/scaffold"
 )
 
 var version = "0.0.6"
 
-var supportedRuntimes = []string{"node", "go", "python"}
+var supportedRuntimes = []string{"node", "go", "python", "php", "java", "bun"}
 
 // NewRootCmd creates and configures the root command and all subcommands.
 func NewRootCmd() *cobra.Command {
@@ -25,7 +28,7 @@ func NewRootCmd() *cobra.Command {
 		Use:   "uvm",
 		Short: "Universal Version Manager",
 		Long: `uvm (Universal Version Manager) is a fast, lightweight CLI tool to install, 
-manage, and switch between multiple programming language runtimes (Node.js, Go, Python), 
+manage, and switch between multiple programming language runtimes (Node.js, Go, Python, PHP, Java, Bun), 
 auto-switch versions via .uvmrc, and scaffold production-ready clean architecture projects.`,
 		Version:      version,
 		SilenceUsage: true,
@@ -68,6 +71,12 @@ func versionCompletion(forInstall bool) func(cmd *cobra.Command, args []string, 
 					completions = []string{"latest", "stable", "1.24", "1.23", "1.22", "1.21"}
 				case "python", "py", "python3":
 					completions = []string{"latest", "lts", "3.13", "3.12", "3.11", "3.10"}
+				case "php":
+					completions = []string{"latest", "lts", "8.4", "8.3", "8.2", "8.1"}
+				case "java", "jdk", "openjdk":
+					completions = []string{"latest", "lts", "23", "21", "17", "11", "8"}
+				case "bun":
+					completions = []string{"latest", "lts", "1.2", "1.1", "1.0"}
 				}
 				return completions, cobra.ShellCompDirectiveNoFileComp
 			}
@@ -96,6 +105,27 @@ func versionCompletion(forInstall bool) func(cmd *cobra.Command, args []string, 
 						installedVers = append(installedVers, v.Version)
 					}
 				}
+			case "php":
+				mgr := php.NewManager("")
+				if list, err := mgr.ListInstalled(); err == nil {
+					for _, v := range list {
+						installedVers = append(installedVers, v.Version)
+					}
+				}
+			case "java", "jdk", "openjdk":
+				mgr := java.NewManager("")
+				if list, err := mgr.ListInstalled(); err == nil {
+					for _, v := range list {
+						installedVers = append(installedVers, v.Version)
+					}
+				}
+			case "bun":
+				mgr := bun.NewManager("")
+				if list, err := mgr.ListInstalled(); err == nil {
+					for _, v := range list {
+						installedVers = append(installedVers, v.Version)
+					}
+				}
 			}
 			return installedVers, cobra.ShellCompDirectiveNoFileComp
 		}
@@ -108,7 +138,7 @@ func newInstallCmd() *cobra.Command {
 		Use:     "install [runtime] [version]",
 		Short:   "Install a specific runtime version (supports exact or prefix like '24')",
 		Args:    cobra.ExactArgs(2),
-		Example: "  uvm install node 24\n  uvm install node 20.11.0\n  uvm install node lts\n  uvm install go 1.22\n  uvm install python 3.12",
+		Example: "  uvm install node 24\n  uvm install node 20.11.0\n  uvm install node lts\n  uvm install go 1.22\n  uvm install python 3.12\n  uvm install php 8.3\n  uvm install java 21\n  uvm install bun 1.2",
 		ValidArgsFunction: versionCompletion(true),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runtime, ver := args[0], args[1]
@@ -122,8 +152,17 @@ func newInstallCmd() *cobra.Command {
 			case "python", "py", "python3":
 				mgr := python.NewManager("")
 				return mgr.Install(ver, cmd.OutOrStdout())
+			case "php":
+				mgr := php.NewManager("")
+				return mgr.Install(ver, cmd.OutOrStdout())
+			case "java", "jdk", "openjdk":
+				mgr := java.NewManager("")
+				return mgr.Install(ver, cmd.OutOrStdout())
+			case "bun":
+				mgr := bun.NewManager("")
+				return mgr.Install(ver, cmd.OutOrStdout())
 			default:
-				return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", runtime)
+				return fmt.Errorf("unsupported runtime %q (supported: node, go, python, php, java, bun)", runtime)
 			}
 		},
 	}
@@ -135,7 +174,7 @@ func newUseCmd() *cobra.Command {
 		Use:     "use [runtime] [version]",
 		Short:   "Switch to a specific installed runtime version or auto-switch from .uvmrc",
 		Args:    cobra.MaximumNArgs(2),
-		Example: "  uvm use                  # Auto-switches using .uvmrc in current directory\n  uvm use node 24          # Switches Node.js to v24.x\n  uvm use go 1.22          # Switches Go to 1.22.x\n  uvm use python 3.12      # Switches Python to 3.12.x",
+		Example: "  uvm use                  # Auto-switches using .uvmrc in current directory\n  uvm use node 24          # Switches Node.js to v24.x\n  uvm use go 1.22          # Switches Go to 1.22.x\n  uvm use python 3.12      # Switches Python to 3.12.x\n  uvm use php 8.3          # Switches PHP to 8.3.x\n  uvm use java 21          # Switches Java to 21.x\n  uvm use bun 1.2          # Switches Bun to 1.2.x",
 		ValidArgsFunction: versionCompletion(false),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Auto-detection mode if no arguments provided
@@ -165,6 +204,21 @@ func newUseCmd() *cobra.Command {
 						if err := mgr.Use(ver, cmd.OutOrStdout()); err != nil {
 							return err
 						}
+					case "php":
+						mgr := php.NewManager("")
+						if err := mgr.Use(ver, cmd.OutOrStdout()); err != nil {
+							return err
+						}
+					case "java", "jdk", "openjdk":
+						mgr := java.NewManager("")
+						if err := mgr.Use(ver, cmd.OutOrStdout()); err != nil {
+							return err
+						}
+					case "bun":
+						mgr := bun.NewManager("")
+						if err := mgr.Use(ver, cmd.OutOrStdout()); err != nil {
+							return err
+						}
 					}
 				}
 				return nil
@@ -185,8 +239,17 @@ func newUseCmd() *cobra.Command {
 			case "python", "py", "python3":
 				mgr := python.NewManager("")
 				return mgr.Use(ver, cmd.OutOrStdout())
+			case "php":
+				mgr := php.NewManager("")
+				return mgr.Use(ver, cmd.OutOrStdout())
+			case "java", "jdk", "openjdk":
+				mgr := java.NewManager("")
+				return mgr.Use(ver, cmd.OutOrStdout())
+			case "bun":
+				mgr := bun.NewManager("")
+				return mgr.Use(ver, cmd.OutOrStdout())
 			default:
-				return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", runtime)
+				return fmt.Errorf("unsupported runtime %q (supported: node, go, python, php, java, bun)", runtime)
 			}
 		},
 	}
@@ -198,7 +261,7 @@ func newPinCmd() *cobra.Command {
 		Use:     "pin [runtime] [version]",
 		Short:   "Pin a runtime version in current directory's .uvmrc",
 		Args:    cobra.ExactArgs(2),
-		Example: "  uvm pin node 20\n  uvm pin go 1.22\n  uvm pin python 3.12",
+		Example: "  uvm pin node 20\n  uvm pin go 1.22\n  uvm pin python 3.12\n  uvm pin php 8.3\n  uvm pin java 21\n  uvm pin bun 1.2",
 		ValidArgsFunction: versionCompletion(false),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, ver := strings.ToLower(args[0]), args[1]
@@ -209,8 +272,14 @@ func newPinCmd() *cobra.Command {
 				rt = "go"
 			case "python", "py", "python3":
 				rt = "python"
+			case "php":
+				rt = "php"
+			case "java", "jdk", "openjdk":
+				rt = "java"
+			case "bun":
+				rt = "bun"
 			default:
-				return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", rt)
+				return fmt.Errorf("unsupported runtime %q (supported: node, go, python, php, java, bun)", rt)
 			}
 
 			// Read existing .uvmrc if exists in current dir
@@ -403,7 +472,16 @@ func newListCmd() *cobra.Command {
 				pyMgr := python.NewManager("")
 				pyList, _ := pyMgr.ListInstalled()
 
-				if len(nodeList) == 0 && len(goList) == 0 && len(pyList) == 0 {
+				phpMgr := php.NewManager("")
+				phpList, _ := phpMgr.ListInstalled()
+
+				javaMgr := java.NewManager("")
+				javaList, _ := javaMgr.ListInstalled()
+
+				bunMgr := bun.NewManager("")
+				bunList, _ := bunMgr.ListInstalled()
+
+				if len(nodeList) == 0 && len(goList) == 0 && len(pyList) == 0 && len(phpList) == 0 && len(javaList) == 0 && len(bunList) == 0 {
 					fmt.Fprintln(cmd.OutOrStdout(), "Listing all managed runtimes and versions...")
 					fmt.Fprintln(cmd.OutOrStdout(), "  (No runtime versions installed yet)")
 					return nil
@@ -434,6 +512,39 @@ func newListCmd() *cobra.Command {
 				if len(pyList) > 0 {
 					fmt.Fprintln(cmd.OutOrStdout(), "Installed Python versions:")
 					for _, v := range pyList {
+						if v.IsActive {
+							fmt.Fprintf(cmd.OutOrStdout(), "  * %s (active)\n", v.Version)
+						} else {
+							fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", v.Version)
+						}
+					}
+				}
+
+				if len(phpList) > 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "Installed PHP versions:")
+					for _, v := range phpList {
+						if v.IsActive {
+							fmt.Fprintf(cmd.OutOrStdout(), "  * %s (active)\n", v.Version)
+						} else {
+							fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", v.Version)
+						}
+					}
+				}
+
+				if len(javaList) > 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "Installed Java versions:")
+					for _, v := range javaList {
+						if v.IsActive {
+							fmt.Fprintf(cmd.OutOrStdout(), "  * %s (active)\n", v.Version)
+						} else {
+							fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", v.Version)
+						}
+					}
+				}
+
+				if len(bunList) > 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "Installed Bun versions:")
+					for _, v := range bunList {
 						if v.IsActive {
 							fmt.Fprintf(cmd.OutOrStdout(), "  * %s (active)\n", v.Version)
 						} else {
@@ -506,8 +617,68 @@ func newListCmd() *cobra.Command {
 				}
 				return nil
 
+			case "php":
+				mgr := php.NewManager("")
+				list, err := mgr.ListInstalled()
+				if err != nil {
+					return err
+				}
+				if len(list) == 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "No installed PHP versions found. Run 'uvm install php <version>' to install one.\n")
+					return nil
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Installed PHP versions:")
+				for _, v := range list {
+					if v.IsActive {
+						fmt.Fprintf(cmd.OutOrStdout(), "  * %s (active)\n", v.Version)
+					} else {
+						fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", v.Version)
+					}
+				}
+				return nil
+
+			case "java", "jdk", "openjdk":
+				mgr := java.NewManager("")
+				list, err := mgr.ListInstalled()
+				if err != nil {
+					return err
+				}
+				if len(list) == 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "No installed Java versions found. Run 'uvm install java <version>' to install one.\n")
+					return nil
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Installed Java versions:")
+				for _, v := range list {
+					if v.IsActive {
+						fmt.Fprintf(cmd.OutOrStdout(), "  * %s (active)\n", v.Version)
+					} else {
+						fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", v.Version)
+					}
+				}
+				return nil
+
+			case "bun":
+				mgr := bun.NewManager("")
+				list, err := mgr.ListInstalled()
+				if err != nil {
+					return err
+				}
+				if len(list) == 0 {
+					fmt.Fprintf(cmd.OutOrStdout(), "No installed Bun versions found. Run 'uvm install bun <version>' to install one.\n")
+					return nil
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Installed Bun versions:")
+				for _, v := range list {
+					if v.IsActive {
+						fmt.Fprintf(cmd.OutOrStdout(), "  * %s (active)\n", v.Version)
+					} else {
+						fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", v.Version)
+					}
+				}
+				return nil
+
 			default:
-				return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", rt)
+				return fmt.Errorf("unsupported runtime %q (supported: node, go, python, php, java, bun)", rt)
 			}
 		},
 	}
@@ -522,7 +693,7 @@ func newListRemoteCmd() *cobra.Command {
 		Aliases: []string{"ls-remote", "list-all", "ls-r"},
 		Short:   "List available remote versions for installation",
 		Args:    cobra.MaximumNArgs(1),
-		Example: "  uvm list-remote\n  uvm list-remote node\n  uvm list-remote go\n  uvm list-remote python",
+		Example: "  uvm list-remote\n  uvm list-remote node\n  uvm list-remote go\n  uvm list-remote python\n  uvm list-remote php\n  uvm list-remote java\n  uvm list-remote bun",
 		ValidArgsFunction: runtimeCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt := ""
@@ -562,6 +733,42 @@ func printRemoteList(cmd *cobra.Command, rt string) error {
 		pyMgr := python.NewManager("")
 		if releases, err := pyMgr.ListRemote(10); err == nil && len(releases) > 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), "\nPython (available releases):")
+			for _, r := range releases {
+				if r.LTS != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s (%s)\n", r.Version, r.LTS)
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r.Version)
+				}
+			}
+		}
+
+		phpMgr := php.NewManager("")
+		if releases, err := phpMgr.ListRemote(10); err == nil && len(releases) > 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "\nPHP (available releases):")
+			for _, r := range releases {
+				if r.LTS != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s (%s)\n", r.Version, r.LTS)
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r.Version)
+				}
+			}
+		}
+
+		javaMgr := java.NewManager("")
+		if releases, err := javaMgr.ListRemote(10); err == nil && len(releases) > 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "\nJava (Eclipse Temurin / OpenJDK releases):")
+			for _, r := range releases {
+				if r.LTS != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s (%s)\n", r.Version, r.LTS)
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r.Version)
+				}
+			}
+		}
+
+		bunMgr := bun.NewManager("")
+		if releases, err := bunMgr.ListRemote(10); err == nil && len(releases) > 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "\nBun (available releases):")
 			for _, r := range releases {
 				if r.LTS != "" {
 					fmt.Fprintf(cmd.OutOrStdout(), "  %-12s (%s)\n", r.Version, r.LTS)
@@ -619,8 +826,56 @@ func printRemoteList(cmd *cobra.Command, rt string) error {
 		}
 		return nil
 
+	case "php":
+		mgr := php.NewManager("")
+		releases, err := mgr.ListRemote(25)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Available PHP versions:")
+		for _, r := range releases {
+			if r.LTS != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s (%s)\n", r.Version, r.LTS)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r.Version)
+			}
+		}
+		return nil
+
+	case "java", "jdk", "openjdk":
+		mgr := java.NewManager("")
+		releases, err := mgr.ListRemote(25)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Available Java versions:")
+		for _, r := range releases {
+			if r.LTS != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s (%s)\n", r.Version, r.LTS)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r.Version)
+			}
+		}
+		return nil
+
+	case "bun":
+		mgr := bun.NewManager("")
+		releases, err := mgr.ListRemote(25)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Available Bun versions:")
+		for _, r := range releases {
+			if r.LTS != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s (%s)\n", r.Version, r.LTS)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r.Version)
+			}
+		}
+		return nil
+
 	default:
-		return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", rt)
+		return fmt.Errorf("unsupported runtime %q (supported: node, go, python, php, java, bun)", rt)
 	}
 }
 
@@ -630,7 +885,7 @@ func newRemoveCmd() *cobra.Command {
 		Aliases: []string{"rm", "uninstall"},
 		Short:   "Remove a specific runtime version (supports partial prefix e.g. '24')",
 		Args:    cobra.ExactArgs(2),
-		Example: "  uvm remove node 24\n  uvm remove node 20.11.0\n  uvm rm go 1.22\n  uvm rm python 3.12",
+		Example: "  uvm remove node 24\n  uvm remove node 20.11.0\n  uvm rm go 1.22\n  uvm rm python 3.12\n  uvm rm php 8.3\n  uvm rm java 21\n  uvm rm bun 1.2",
 		ValidArgsFunction: versionCompletion(false),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runtime, ver := args[0], args[1]
@@ -644,8 +899,17 @@ func newRemoveCmd() *cobra.Command {
 			case "python", "py", "python3":
 				mgr := python.NewManager("")
 				return mgr.Remove(ver, cmd.OutOrStdout())
+			case "php":
+				mgr := php.NewManager("")
+				return mgr.Remove(ver, cmd.OutOrStdout())
+			case "java", "jdk", "openjdk":
+				mgr := java.NewManager("")
+				return mgr.Remove(ver, cmd.OutOrStdout())
+			case "bun":
+				mgr := bun.NewManager("")
+				return mgr.Remove(ver, cmd.OutOrStdout())
 			default:
-				return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", runtime)
+				return fmt.Errorf("unsupported runtime %q (supported: node, go, python, php, java, bun)", runtime)
 			}
 		},
 	}
@@ -657,15 +921,18 @@ func newCurrentCmd() *cobra.Command {
 		Use:     "current [runtime]",
 		Short:   "Display currently active runtime version",
 		Args:    cobra.MaximumNArgs(1),
-		Example: "  uvm current\n  uvm current node\n  uvm current go\n  uvm current python",
+		Example: "  uvm current\n  uvm current node\n  uvm current go\n  uvm current python\n  uvm current php\n  uvm current java\n  uvm current bun",
 		ValidArgsFunction: runtimeCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				nodeVer, nodeErr := node.NewManager("").Current()
 				goVer, goErr := golang.NewManager("").Current()
 				pyVer, pyErr := python.NewManager("").Current()
+				phpVer, phpErr := php.NewManager("").Current()
+				javaVer, javaErr := java.NewManager("").Current()
+				bunVer, bunErr := bun.NewManager("").Current()
 
-				if nodeErr != nil && goErr != nil && pyErr != nil {
+				if nodeErr != nil && goErr != nil && pyErr != nil && phpErr != nil && javaErr != nil && bunErr != nil {
 					fmt.Fprintln(cmd.OutOrStdout(), "No active runtime versions set.")
 					return nil
 				}
@@ -686,6 +953,24 @@ func newCurrentCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "Python:  %s\n", pyVer)
 				} else {
 					fmt.Fprintln(cmd.OutOrStdout(), "Python:  (none)")
+				}
+
+				if phpErr == nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "PHP:     %s\n", phpVer)
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), "PHP:     (none)")
+				}
+
+				if javaErr == nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "Java:    %s\n", javaVer)
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), "Java:    (none)")
+				}
+
+				if bunErr == nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "Bun:     %s\n", bunVer)
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), "Bun:     (none)")
 				}
 
 				return nil
@@ -723,8 +1008,38 @@ func newCurrentCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "Current Python version: %s\n", ver)
 				return nil
 
+			case "php":
+				mgr := php.NewManager("")
+				ver, err := mgr.Current()
+				if err != nil {
+					fmt.Fprintln(cmd.OutOrStdout(), "No active PHP version set.")
+					return nil
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Current PHP version: %s\n", ver)
+				return nil
+
+			case "java", "jdk", "openjdk":
+				mgr := java.NewManager("")
+				ver, err := mgr.Current()
+				if err != nil {
+					fmt.Fprintln(cmd.OutOrStdout(), "No active Java version set.")
+					return nil
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Current Java version: %s\n", ver)
+				return nil
+
+			case "bun":
+				mgr := bun.NewManager("")
+				ver, err := mgr.Current()
+				if err != nil {
+					fmt.Fprintln(cmd.OutOrStdout(), "No active Bun version set.")
+					return nil
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Current Bun version: %s\n", ver)
+				return nil
+
 			default:
-				return fmt.Errorf("unsupported runtime %q (supported: node, go, python)", runtime)
+				return fmt.Errorf("unsupported runtime %q (supported: node, go, python, php, java, bun)", runtime)
 			}
 		},
 	}

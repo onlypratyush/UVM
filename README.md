@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-brightgreen.svg)]()
 
-**uvm** (Universal Version Manager) is a fast, cross-platform, and lightweight CLI tool designed to install, manage, and switch between multiple programming language runtimes (**Node.js**, **Go**, **Python**, etc.) seamlessly across **macOS**, **Linux**, and **Windows**.
+**uvm** (Universal Version Manager) is a fast, cross-platform, and lightweight CLI tool designed to install, manage, and switch between multiple programming language runtimes (**Node.js**, **Go**, **Python**, **PHP**, **Java**, **Bun**, etc.) seamlessly across **macOS**, **Linux**, and **Windows**.
 
 ---
 
@@ -120,6 +120,85 @@ uvm current python
 uvm remove python 3.12
 ```
 
+### 🐘 4. PHP (`php`)
+```bash
+# Install with prefix (e.g. 8.3 -> 8.3.17), latest, or lts
+uvm install php 8.3
+uvm install php 8.4.4
+uvm install php latest
+
+# Switch active version (configures php, php-cgi, phar)
+uvm use php 8.3
+uvm use php 8.4.4
+
+# List installed PHP versions
+uvm list php
+
+# List available remote PHP releases from php.net
+uvm list-remote php
+# or
+uvm list --remote php
+
+# Show current active PHP version
+uvm current php
+
+# Remove version
+uvm remove php 8.3
+```
+
+### ☕ 5. Java (`java` / `jdk` / `openjdk`)
+```bash
+# Install with feature version (e.g. 21 -> 21.0.6), LTS, or latest
+uvm install java 21
+uvm install java 17
+uvm install java 11
+uvm install java latest
+
+# Switch active version (configures java, javac, jar, javadoc, jshell, JAVA_HOME)
+uvm use java 21
+uvm use java 17
+
+# List installed Java versions
+uvm list java
+
+# List available remote Eclipse Temurin / OpenJDK releases via Adoptium
+uvm list-remote java
+# or
+uvm list --remote java
+
+# Show current active Java version
+uvm current java
+
+# Remove version
+uvm remove java 21
+```
+
+### 🍞 6. Bun (`bun`)
+```bash
+# Install with prefix (e.g. 1.2 -> 1.2.4), LTS, or latest
+uvm install bun 1.2
+uvm install bun 1.2.4
+uvm install bun latest
+
+# Switch active version (configures bun, bunx)
+uvm use bun 1.2
+uvm use bun 1.2.4
+
+# List installed Bun versions
+uvm list bun
+
+# List available remote Bun releases from GitHub
+uvm list-remote bun
+# or
+uvm list --remote bun
+
+# Show current active Bun version
+uvm current bun
+
+# Remove version
+uvm remove bun 1.2
+```
+
 ### 🌐 Cross-Runtime Overview
 ```bash
 # List installed versions across ALL managed runtimes
@@ -153,6 +232,15 @@ uvm pin go 1.22
 
 # Pin Python to version 3.12
 uvm pin python 3.12
+
+# Pin PHP to version 8.3
+uvm pin php 8.3
+
+# Pin Java to version 21
+uvm pin java 21
+
+# Pin Bun to version 1.2
+uvm pin bun 1.2
 ```
 
 ### 🔄 Auto-Switching

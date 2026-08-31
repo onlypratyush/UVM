@@ -108,7 +108,10 @@ func TestDetectNodeMacOSHomebrew(t *testing.T) {
 
 	detector := NewRuntimeDetector(tmpDir, "darwin")
 	detector.LookPath = func(file string) (string, error) {
-		return nodeExe, nil
+		if file == "node" {
+			return nodeExe, nil
+		}
+		return "", os.ErrNotExist
 	}
 	detector.RunCmd = func(name string, args ...string) (string, error) {
 		return "v20.10.0", nil
@@ -250,6 +253,155 @@ func TestDetectPython(t *testing.T) {
 	all := detector.DetectAllRuntimes()
 	if len(all) == 0 {
 		t.Errorf("expected detected runtimes in all, got 0")
+	}
+}
+
+func TestDetectPHP(t *testing.T) {
+	tmpDir := t.TempDir()
+	phpBin := filepath.Join(tmpDir, "opt", "homebrew", "bin")
+	_ = os.MkdirAll(phpBin, 0755)
+	phpExe := filepath.Join(phpBin, "php")
+	_ = os.WriteFile(phpExe, []byte("fake"), 0755)
+
+	detector := NewRuntimeDetector(tmpDir, "darwin")
+	detector.LookPath = func(file string) (string, error) {
+		if file == "php" {
+			return phpExe, nil
+		}
+		return "", os.ErrNotExist
+	}
+	detector.RunCmd = func(name string, args ...string) (string, error) {
+		if name == phpExe && len(args) > 0 && args[0] == "-v" {
+			return "PHP 8.3.17 (cli) (built: Feb 13 2025)", nil
+		}
+		return "", fmt.Errorf("command failed")
+	}
+
+	res := detector.DetectPHP()
+	if !res.Found || res.Version != "8.3.17" {
+		t.Fatalf("expected PHP detected 8.3.17, got: %+v", res)
+	}
+
+	// Test windows PHP
+	winDetector := NewRuntimeDetector(tmpDir, "windows")
+	progFiles := filepath.Join(tmpDir, "Program Files")
+	winPhpExe := filepath.Join(progFiles, "PHP", "php.exe")
+	_ = os.MkdirAll(filepath.Dir(winPhpExe), 0755)
+	_ = os.WriteFile(winPhpExe, []byte("fake"), 0755)
+	winDetector.Env = func(key string) string {
+		if key == "ProgramFiles" {
+			return progFiles
+		}
+		return ""
+	}
+	winDetector.LookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+	winDetector.RunCmd = func(name string, args ...string) (string, error) {
+		return "PHP 8.4.4 (cli) (built: Feb 13 2025)", nil
+	}
+
+	winRes := winDetector.DetectPHP()
+	if !winRes.Found || winRes.Version != "8.4.4" {
+		t.Fatalf("expected Windows PHP detected, got: %+v", winRes)
+	}
+}
+
+func TestDetectJava(t *testing.T) {
+	tmpDir := t.TempDir()
+	javaBin := filepath.Join(tmpDir, "usr", "bin")
+	_ = os.MkdirAll(javaBin, 0755)
+	javaExe := filepath.Join(javaBin, "java")
+	_ = os.WriteFile(javaExe, []byte("fake"), 0755)
+
+	detector := NewRuntimeDetector(tmpDir, "linux")
+	detector.LookPath = func(file string) (string, error) {
+		if file == "java" {
+			return javaExe, nil
+		}
+		return "", os.ErrNotExist
+	}
+	detector.RunCmd = func(name string, args ...string) (string, error) {
+		if name == javaExe && len(args) > 0 && (args[0] == "-version" || args[0] == "--version") {
+			return "openjdk version \"21.0.6\" 2025-01-21", nil
+		}
+		return "", fmt.Errorf("command failed")
+	}
+
+	res := detector.DetectJava()
+	if !res.Found || res.Version != "21.0.6" {
+		t.Fatalf("expected Java detected 21.0.6, got: %+v", res)
+	}
+
+	// Test JAVA_HOME detection
+	javaHomeDir := filepath.Join(tmpDir, "opt", "jdk-17")
+	javaHomeBin := filepath.Join(javaHomeDir, "bin")
+	_ = os.MkdirAll(javaHomeBin, 0755)
+	javaHomeExe := filepath.Join(javaHomeBin, "java")
+	_ = os.WriteFile(javaHomeExe, []byte("fake"), 0755)
+
+	jhDetector := NewRuntimeDetector(tmpDir, "darwin")
+	jhDetector.Env = func(key string) string {
+		if key == "JAVA_HOME" {
+			return javaHomeDir
+		}
+		return ""
+	}
+	jhDetector.LookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+	jhDetector.RunCmd = func(name string, args ...string) (string, error) {
+		return "openjdk version \"17.0.14\" 2025-01-21", nil
+	}
+
+	jhRes := jhDetector.DetectJava()
+	if !jhRes.Found || jhRes.Version != "17.0.14" {
+		t.Fatalf("expected Java via JAVA_HOME detected, got: %+v", jhRes)
+	}
+}
+
+func TestDetectBun(t *testing.T) {
+	tmpDir := t.TempDir()
+	bunBin := filepath.Join(tmpDir, "opt", "homebrew", "bin")
+	_ = os.MkdirAll(bunBin, 0755)
+	bunExe := filepath.Join(bunBin, "bun")
+	_ = os.WriteFile(bunExe, []byte("fake"), 0755)
+
+	detector := NewRuntimeDetector(tmpDir, "darwin")
+	detector.LookPath = func(file string) (string, error) {
+		if file == "bun" {
+			return bunExe, nil
+		}
+		return "", os.ErrNotExist
+	}
+	detector.RunCmd = func(name string, args ...string) (string, error) {
+		if name == bunExe && len(args) > 0 && args[0] == "-v" {
+			return "1.2.4\n", nil
+		}
+		return "", fmt.Errorf("command failed")
+	}
+
+	res := detector.DetectBun()
+	if !res.Found || res.Version != "1.2.4" {
+		t.Fatalf("expected Bun detected 1.2.4, got: %+v", res)
+	}
+
+	// Test windows Bun installer in ~/.bun/bin/bun.exe
+	winDetector := NewRuntimeDetector(tmpDir, "windows")
+	winBunExe := filepath.Join(tmpDir, ".bun", "bin", "bun.exe")
+	_ = os.MkdirAll(filepath.Dir(winBunExe), 0755)
+	_ = os.WriteFile(winBunExe, []byte("fake"), 0755)
+
+	winDetector.LookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+	winDetector.RunCmd = func(name string, args ...string) (string, error) {
+		return "1.2.0", nil
+	}
+
+	winRes := winDetector.DetectBun()
+	if !winRes.Found || winRes.Version != "1.2.0" || winRes.ManagerType != "Bun Installer" {
+		t.Fatalf("expected Windows Bun detected in ~/.bun, got: %+v", winRes)
 	}
 }
 

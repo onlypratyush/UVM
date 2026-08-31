@@ -70,6 +70,18 @@ func TestInstallCmd(t *testing.T) {
 	pyDir := filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2")
 	_ = os.MkdirAll(pyDir, 0755)
 
+	// Mock already installed php version
+	phpDir := filepath.Join(tmpHome, ".uvm", "versions", "php", "8.3.17")
+	_ = os.MkdirAll(phpDir, 0755)
+
+	// Mock already installed java version
+	javaDir := filepath.Join(tmpHome, ".uvm", "versions", "java", "21.0.6")
+	_ = os.MkdirAll(javaDir, 0755)
+
+	// Mock already installed bun version
+	bunDir := filepath.Join(tmpHome, ".uvm", "versions", "bun", "1.2.4")
+	_ = os.MkdirAll(bunDir, 0755)
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -116,6 +128,36 @@ func TestInstallCmd(t *testing.T) {
 			name:        "install python3 alias",
 			args:        []string{"install", "python3", "3.12.2"},
 			expectedOut: "Python 3.12.2 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install already installed php",
+			args:        []string{"install", "php", "8.3.17"},
+			expectedOut: "PHP 8.3.17 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install already installed java",
+			args:        []string{"install", "java", "21.0.6"},
+			expectedOut: "Java 21.0.6 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install jdk alias",
+			args:        []string{"install", "jdk", "21.0.6"},
+			expectedOut: "Java 21.0.6 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install openjdk alias",
+			args:        []string{"install", "openjdk", "21.0.6"},
+			expectedOut: "Java 21.0.6 is already installed",
+			expectError: false,
+		},
+		{
+			name:        "install already installed bun",
+			args:        []string{"install", "bun", "1.2.4"},
+			expectedOut: "Bun 1.2.4 is already installed",
 			expectError: false,
 		},
 		{
@@ -180,6 +222,19 @@ func TestUseCmd(t *testing.T) {
 	pyDir := filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2", "bin")
 	_ = os.MkdirAll(pyDir, 0755)
 
+	// Create mock php version
+	phpDir := filepath.Join(tmpHome, ".uvm", "versions", "php", "8.3.17", "bin")
+	_ = os.MkdirAll(phpDir, 0755)
+
+	// Create mock java version
+	javaDir := filepath.Join(tmpHome, ".uvm", "versions", "java", "21.0.6", "bin")
+	_ = os.MkdirAll(javaDir, 0755)
+
+	// Create mock bun version
+	bunDir := filepath.Join(tmpHome, ".uvm", "versions", "bun", "1.2.4")
+	_ = os.MkdirAll(bunDir, 0755)
+	_ = os.WriteFile(filepath.Join(bunDir, "bun"), []byte("bin"), 0755)
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -241,6 +296,51 @@ func TestUseCmd(t *testing.T) {
 		{
 			name:        "use python uninstalled",
 			args:        []string{"use", "python", "3.9.0"},
+			expectError: true,
+		},
+		{
+			name:        "use php installed",
+			args:        []string{"use", "php", "8.3.17"},
+			expectedOut: "Now using PHP 8.3.17\n",
+			expectError: false,
+		},
+		{
+			name:        "use php uninstalled",
+			args:        []string{"use", "php", "7.4.0"},
+			expectError: true,
+		},
+		{
+			name:        "use java installed",
+			args:        []string{"use", "java", "21.0.6"},
+			expectedOut: "Now using Java 21.0.6\n",
+			expectError: false,
+		},
+		{
+			name:        "use jdk alias",
+			args:        []string{"use", "jdk", "21.0.6"},
+			expectedOut: "Now using Java 21.0.6\n",
+			expectError: false,
+		},
+		{
+			name:        "use openjdk alias",
+			args:        []string{"use", "openjdk", "21.0.6"},
+			expectedOut: "Now using Java 21.0.6\n",
+			expectError: false,
+		},
+		{
+			name:        "use java uninstalled",
+			args:        []string{"use", "java", "11.0.0"},
+			expectError: true,
+		},
+		{
+			name:        "use bun installed",
+			args:        []string{"use", "bun", "1.2.4"},
+			expectedOut: "Now using Bun 1.2.4\n",
+			expectError: false,
+		},
+		{
+			name:        "use bun uninstalled",
+			args:        []string{"use", "bun", "0.8.0"},
 			expectError: true,
 		},
 		{
@@ -316,10 +416,31 @@ func TestListCmd(t *testing.T) {
 		t.Errorf("unexpected output for empty list python: %s", outBuf.String())
 	}
 
+	outBuf.Reset()
+	_ = Execute([]string{"list", "php"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "No installed PHP versions found") {
+		t.Errorf("unexpected output for empty list php: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	_ = Execute([]string{"list", "java"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "No installed Java versions found") {
+		t.Errorf("unexpected output for empty list java: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	_ = Execute([]string{"list", "bun"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "No installed Bun versions found") {
+		t.Errorf("unexpected output for empty list bun: %s", outBuf.String())
+	}
+
 	// Create installed versions for all runtimes
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.0"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "php", "8.3.17"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "java", "21.0.6"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "bun", "1.2.4"), 0755)
 
 	// Activate versions
 	currentParent := filepath.Join(tmpHome, ".uvm", "current")
@@ -327,6 +448,9 @@ func TestListCmd(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(currentParent, "node.version"), []byte("v20.11.0"), 0644)
 	_ = os.WriteFile(filepath.Join(currentParent, "go.version"), []byte("go1.22.0"), 0644)
 	_ = os.WriteFile(filepath.Join(currentParent, "python.version"), []byte("3.12.2"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "php.version"), []byte("8.3.17"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "java.version"), []byte("21.0.6"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "bun.version"), []byte("1.2.4"), 0644)
 
 	// List all
 	outBuf.Reset()
@@ -334,8 +458,11 @@ func TestListCmd(t *testing.T) {
 	out := outBuf.String()
 	if !strings.Contains(out, "Installed Node.js versions:") ||
 		!strings.Contains(out, "Installed Go versions:") ||
-		!strings.Contains(out, "Installed Python versions:") {
-		t.Errorf("expected all 3 runtimes in list all output, got: %s", out)
+		!strings.Contains(out, "Installed Python versions:") ||
+		!strings.Contains(out, "Installed PHP versions:") ||
+		!strings.Contains(out, "Installed Java versions:") ||
+		!strings.Contains(out, "Installed Bun versions:") {
+		t.Errorf("expected all 6 runtimes in list all output, got: %s", out)
 	}
 
 	// List specific runtimes
@@ -349,6 +476,24 @@ func TestListCmd(t *testing.T) {
 	_ = Execute([]string{"ls", "py"}, outBuf, errBuf)
 	if !strings.Contains(outBuf.String(), "* 3.12.2 (active)") {
 		t.Errorf("unexpected py list output: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	_ = Execute([]string{"ls", "php"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "* 8.3.17 (active)") {
+		t.Errorf("unexpected php list output: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	_ = Execute([]string{"ls", "jdk"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "* 21.0.6 (active)") {
+		t.Errorf("unexpected java list output: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	_ = Execute([]string{"ls", "bun"}, outBuf, errBuf)
+	if !strings.Contains(outBuf.String(), "* 1.2.4 (active)") {
+		t.Errorf("unexpected bun list output: %s", outBuf.String())
 	}
 
 	// Unsupported runtime
@@ -373,6 +518,9 @@ func TestRemoveCmd(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.0"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.2"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "php", "8.3.17"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "java", "21.0.6"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "bun", "1.2.4"), 0755)
 
 	outBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
@@ -395,6 +543,27 @@ func TestRemoveCmd(t *testing.T) {
 	err = Execute([]string{"uninstall", "python", "3.12.2"}, outBuf, errBuf)
 	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
 		t.Fatalf("remove python failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove php version
+	outBuf.Reset()
+	err = Execute([]string{"remove", "php", "8.3.17"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
+		t.Fatalf("remove php failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove java version
+	outBuf.Reset()
+	err = Execute([]string{"rm", "java", "21.0.6"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
+		t.Fatalf("remove java failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove bun version
+	outBuf.Reset()
+	err = Execute([]string{"rm", "bun", "1.2.4"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "removed successfully") {
+		t.Fatalf("remove bun failed: %v, out: %s", err, outBuf.String())
 	}
 
 	// Remove unsupported runtime
@@ -431,13 +600,19 @@ func TestCurrentCmd(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(currentParent, "node.version"), []byte("v20.11.0"), 0644)
 	_ = os.WriteFile(filepath.Join(currentParent, "go.version"), []byte("go1.22.0"), 0644)
 	_ = os.WriteFile(filepath.Join(currentParent, "python.version"), []byte("3.12.2"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "php.version"), []byte("8.3.17"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "java.version"), []byte("21.0.6"), 0644)
+	_ = os.WriteFile(filepath.Join(currentParent, "bun.version"), []byte("1.2.4"), 0644)
 
 	outBuf.Reset()
 	err = Execute([]string{"current"}, outBuf, errBuf)
 	if err != nil || !strings.Contains(outBuf.String(), "Node.js: v20.11.0") ||
 		!strings.Contains(outBuf.String(), "Go:      go1.22.0") ||
-		!strings.Contains(outBuf.String(), "Python:  3.12.2") {
-		t.Errorf("expected all 3 runtimes in current output, got: %s", outBuf.String())
+		!strings.Contains(outBuf.String(), "Python:  3.12.2") ||
+		!strings.Contains(outBuf.String(), "PHP:     8.3.17") ||
+		!strings.Contains(outBuf.String(), "Java:    21.0.6") ||
+		!strings.Contains(outBuf.String(), "Bun:     1.2.4") {
+		t.Errorf("expected all 6 runtimes in current output, got: %s", outBuf.String())
 	}
 
 	outBuf.Reset()
@@ -458,12 +633,30 @@ func TestCurrentCmd(t *testing.T) {
 		t.Errorf("expected current python version, got: %s", outBuf.String())
 	}
 
-	// Inactive individual runtime
-	_ = os.Remove(filepath.Join(currentParent, "go.version"))
 	outBuf.Reset()
-	err = Execute([]string{"current", "go"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "No active Go version set") {
-		t.Errorf("expected no active go version, got: %s", outBuf.String())
+	err = Execute([]string{"current", "php"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "8.3.17") {
+		t.Errorf("expected current php version, got: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"current", "java"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "21.0.6") {
+		t.Errorf("expected current java version, got: %s", outBuf.String())
+	}
+
+	outBuf.Reset()
+	err = Execute([]string{"current", "bun"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "1.2.4") {
+		t.Errorf("expected current bun version, got: %s", outBuf.String())
+	}
+
+	// Inactive individual runtime
+	_ = os.Remove(filepath.Join(currentParent, "bun.version"))
+	outBuf.Reset()
+	err = Execute([]string{"current", "bun"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "No active Bun version set") {
+		t.Errorf("expected no active bun version, got: %s", outBuf.String())
 	}
 
 	// Unsupported runtime
@@ -590,7 +783,28 @@ func TestListRemoteCmd(t *testing.T) {
 		t.Errorf("list-remote python failed: %v, out: %s", err, outBuf.String())
 	}
 
-	// List remote aliases (nodejs, golang, py, python3)
+	// List remote php
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "php"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available PHP versions") {
+		t.Errorf("list-remote php failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote java
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "java"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Java versions") {
+		t.Errorf("list-remote java failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote bun
+	outBuf.Reset()
+	err = Execute([]string{"list-remote", "bun"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Bun versions") {
+		t.Errorf("list-remote bun failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// List remote aliases (nodejs, golang, py, jdk, openjdk)
 	outBuf.Reset()
 	err = Execute([]string{"list-remote", "nodejs"}, outBuf, errBuf)
 	if err != nil || !strings.Contains(outBuf.String(), "Available Node.js versions") {
@@ -598,22 +812,16 @@ func TestListRemoteCmd(t *testing.T) {
 	}
 
 	outBuf.Reset()
-	err = Execute([]string{"list-remote", "golang"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "Available Go versions") {
-		t.Errorf("list-remote golang failed: %v, out: %s", err, outBuf.String())
-	}
-
-	outBuf.Reset()
-	err = Execute([]string{"list-remote", "py"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "Available Python versions") {
-		t.Errorf("list-remote py failed: %v, out: %s", err, outBuf.String())
+	err = Execute([]string{"list-remote", "jdk"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Java versions") {
+		t.Errorf("list-remote jdk failed: %v, out: %s", err, outBuf.String())
 	}
 
 	// List --remote <runtime>
 	outBuf.Reset()
-	err = Execute([]string{"list", "-r", "python"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "Available Python versions") {
-		t.Errorf("list -r python failed: %v, out: %s", err, outBuf.String())
+	err = Execute([]string{"list", "-r", "bun"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Available Bun versions") {
+		t.Errorf("list -r bun failed: %v, out: %s", err, outBuf.String())
 	}
 
 	// List remote invalid runtime
@@ -639,6 +847,12 @@ func TestPartialVersionResolution(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v24.20.0", "bin"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.6", "bin"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "python", "3.12.9", "bin"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "php", "8.3.17", "bin"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "java", "21.0.6", "bin"), 0755)
+
+	bunDir := filepath.Join(tmpHome, ".uvm", "versions", "bun", "1.2.4")
+	_ = os.MkdirAll(bunDir, 0755)
+	_ = os.WriteFile(filepath.Join(bunDir, "bun"), []byte("bin"), 0755)
 
 	outBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
@@ -663,6 +877,27 @@ func TestPartialVersionResolution(t *testing.T) {
 		t.Errorf("use python 3.12 failed: %v, out: %s", err, outBuf.String())
 	}
 
+	// Use php with major.minor "8.3"
+	outBuf.Reset()
+	err = Execute([]string{"use", "php", "8.3"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Now using PHP 8.3.17") {
+		t.Errorf("use php 8.3 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Use java with feature version "21"
+	outBuf.Reset()
+	err = Execute([]string{"use", "java", "21"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Now using Java 21.0.6") {
+		t.Errorf("use java 21 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Use bun with prefix "1.2"
+	outBuf.Reset()
+	err = Execute([]string{"use", "bun", "1.2"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Now using Bun 1.2.4") {
+		t.Errorf("use bun 1.2 failed: %v, out: %s", err, outBuf.String())
+	}
+
 	// Remove node with major version "24"
 	outBuf.Reset()
 	err = Execute([]string{"remove", "node", "24"}, outBuf, errBuf)
@@ -683,6 +918,27 @@ func TestPartialVersionResolution(t *testing.T) {
 	if err != nil || !strings.Contains(outBuf.String(), "3.12.9 removed successfully") {
 		t.Errorf("remove python 3.12 failed: %v, out: %s", err, outBuf.String())
 	}
+
+	// Remove php with major.minor "8.3"
+	outBuf.Reset()
+	err = Execute([]string{"remove", "php", "8.3"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "8.3.17 removed successfully") {
+		t.Errorf("remove php 8.3 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove java with feature "21"
+	outBuf.Reset()
+	err = Execute([]string{"rm", "java", "21"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "21.0.6 removed successfully") {
+		t.Errorf("remove java 21 failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Remove bun with prefix "1.2"
+	outBuf.Reset()
+	err = Execute([]string{"rm", "bun", "1.2"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "1.2.4 removed successfully") {
+		t.Errorf("remove bun 1.2 failed: %v, out: %s", err, outBuf.String())
+	}
 }
 
 func TestCompletions(t *testing.T) {
@@ -690,8 +946,8 @@ func TestCompletions(t *testing.T) {
 
 	// Test runtime completion
 	rts, _ := runtimeCompletion(cmd, []string{}, "")
-	if len(rts) != 3 {
-		t.Errorf("expected 3 runtimes in completion, got %d", len(rts))
+	if len(rts) != 6 {
+		t.Errorf("expected 6 runtimes in completion, got %d", len(rts))
 	}
 
 	rtsNone, _ := runtimeCompletion(cmd, []string{"node"}, "")
@@ -706,8 +962,11 @@ func TestCompletions(t *testing.T) {
 		t.Errorf("expected version completions for install")
 	}
 
-	_ , _ = installFn(cmd, []string{"go"}, "")
-	_ , _ = installFn(cmd, []string{"python"}, "")
+	_, _ = installFn(cmd, []string{"go"}, "")
+	_, _ = installFn(cmd, []string{"python"}, "")
+	_, _ = installFn(cmd, []string{"php"}, "")
+	_, _ = installFn(cmd, []string{"java"}, "")
+	_, _ = installFn(cmd, []string{"bun"}, "")
 
 	// Test version completion for use
 	useFn := versionCompletion(false)
@@ -715,10 +974,13 @@ func TestCompletions(t *testing.T) {
 	if versUse != nil && len(versUse) > 0 {
 		// ok
 	}
-	_ , _ = useFn(cmd, []string{"go"}, "")
-	_ , _ = useFn(cmd, []string{"python"}, "")
-	_ , _ = useFn(cmd, []string{}, "")
-	_ , _ = useFn(cmd, []string{"node", "v20", "extra"}, "")
+	_, _ = useFn(cmd, []string{"go"}, "")
+	_, _ = useFn(cmd, []string{"python"}, "")
+	_, _ = useFn(cmd, []string{"php"}, "")
+	_, _ = useFn(cmd, []string{"java"}, "")
+	_, _ = useFn(cmd, []string{"bun"}, "")
+	_, _ = useFn(cmd, []string{}, "")
+	_, _ = useFn(cmd, []string{"node", "v20", "extra"}, "")
 }
 
 func TestUseAutoSwitchUvmrc(t *testing.T) {
@@ -735,11 +997,17 @@ func TestUseAutoSwitchUvmrc(t *testing.T) {
 	// Create installed versions in home
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "node", "v20.11.0", "bin"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "go", "go1.22.6", "bin"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "php", "8.3.17", "bin"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpHome, ".uvm", "versions", "java", "21.0.6", "bin"), 0755)
+
+	bunDir := filepath.Join(tmpHome, ".uvm", "versions", "bun", "1.2.4")
+	_ = os.MkdirAll(bunDir, 0755)
+	_ = os.WriteFile(filepath.Join(bunDir, "bun"), []byte("bin"), 0755)
 
 	// Create project directory with .uvmrc
 	projectDir := filepath.Join(tmpHome, "my-project")
 	_ = os.MkdirAll(projectDir, 0755)
-	_ = os.WriteFile(filepath.Join(projectDir, ".uvmrc"), []byte("node 20\ngo 1.22\n"), 0644)
+	_ = os.WriteFile(filepath.Join(projectDir, ".uvmrc"), []byte("node 20\ngo 1.22\nphp 8.3\njava 21\nbun 1.2\n"), 0644)
 
 	oldWd, _ := os.Getwd()
 	defer os.Chdir(oldWd)
@@ -750,7 +1018,11 @@ func TestUseAutoSwitchUvmrc(t *testing.T) {
 
 	// Run `uvm use` (0 args) inside project directory
 	err := Execute([]string{"use"}, outBuf, errBuf)
-	if err != nil || !strings.Contains(outBuf.String(), "Found") || !strings.Contains(outBuf.String(), "Now using Node.js v20.11.0") {
+	if err != nil || !strings.Contains(outBuf.String(), "Found") ||
+		!strings.Contains(outBuf.String(), "Now using Node.js v20.11.0") ||
+		!strings.Contains(outBuf.String(), "Now using PHP 8.3.17") ||
+		!strings.Contains(outBuf.String(), "Now using Java 21.0.6") ||
+		!strings.Contains(outBuf.String(), "Now using Bun 1.2.4") {
 		t.Fatalf("use auto-switch failed: %v, out: %s", err, outBuf.String())
 	}
 
@@ -794,6 +1066,27 @@ func TestPinCmd(t *testing.T) {
 		t.Fatalf("pin go failed: %v, out: %s", err, outBuf.String())
 	}
 
+	// Pin php 8.3
+	outBuf.Reset()
+	err = Execute([]string{"pin", "php", "8.3"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Pinned php 8.3") {
+		t.Fatalf("pin php failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Pin java 21
+	outBuf.Reset()
+	err = Execute([]string{"pin", "java", "21"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Pinned java 21") {
+		t.Fatalf("pin java failed: %v, out: %s", err, outBuf.String())
+	}
+
+	// Pin bun 1.2
+	outBuf.Reset()
+	err = Execute([]string{"pin", "bun", "1.2"}, outBuf, errBuf)
+	if err != nil || !strings.Contains(outBuf.String(), "Pinned bun 1.2") {
+		t.Fatalf("pin bun failed: %v, out: %s", err, outBuf.String())
+	}
+
 	// Pin invalid runtime
 	outBuf.Reset()
 	err = Execute([]string{"pin", "invalid_rt", "1.0"}, outBuf, errBuf)
@@ -801,9 +1094,9 @@ func TestPinCmd(t *testing.T) {
 		t.Errorf("expected error pinning invalid runtime")
 	}
 
-	// Verify .uvmrc exists and contains both
+	// Verify .uvmrc exists and contains all pinned runtimes
 	data, err := os.ReadFile(filepath.Join(tmpDir, ".uvmrc"))
-	if err != nil || !strings.Contains(string(data), "node 20") || !strings.Contains(string(data), "go 1.22") {
+	if err != nil || !strings.Contains(string(data), "node 20") || !strings.Contains(string(data), "go 1.22") || !strings.Contains(string(data), "php 8.3") || !strings.Contains(string(data), "java 21") || !strings.Contains(string(data), "bun 1.2") {
 		t.Errorf("invalid .uvmrc content: %s", string(data))
 	}
 }
@@ -856,5 +1149,3 @@ func TestInitCmd(t *testing.T) {
 		t.Errorf("expected my-fastify-api/package.json")
 	}
 }
-
-
