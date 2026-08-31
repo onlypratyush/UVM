@@ -3,7 +3,7 @@
 # ==============================================================================
 
 BINARY_NAME=uvm
-VERSION?=0.0.6
+VERSION?=0.0.7
 DIST_DIR=dist
 BIN_DIR=bin
 INSTALL_DIR?=$(HOME)/.uvm/bin
