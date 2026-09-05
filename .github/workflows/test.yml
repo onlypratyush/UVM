@@ -1,0 +1,16 @@
+name: Runner Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-runner:
+    runs-on: [self-hosted, linux, x64]
+
+    steps:
+      - name: Check server
+        run: |
+          echo "Runner is working!"
+          uname -a
+          node --version
+          npm --version
