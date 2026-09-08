@@ -1,16 +1,29 @@
-name: Runner Test
+name: GitHub App Test
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-runner:
-    runs-on: [self-hosted, linux, x64]
+  test:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Check server
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.BACKEND_APP_ID }}
+          private-key: ${{ secrets.BACKEND_APP_PRIVATE_KEY }}
+          owner: onlypratyush
+          repositories: UVM
+
+      - name: Checkout UVM
+        uses: actions/checkout@v4
+        with:
+          repository: OTHER_ACCOUNT_USERNAME/UVM
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Verify checkout
         run: |
-          echo "Runner is working!"
-          uname -a
-          node --version
-          npm --version
+          echo "GitHub App successfully accessed UVM"
+          ls -la
