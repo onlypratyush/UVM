@@ -20,7 +20,7 @@ jobs:
       - name: Checkout UVM
         uses: actions/checkout@v4
         with:
-          repository: OTHER_ACCOUNT_USERNAME/UVM
+          repository: onlypratyush/UVM-
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Verify checkout
